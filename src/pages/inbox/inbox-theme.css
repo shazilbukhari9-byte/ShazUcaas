@@ -1,0 +1,1510 @@
+/* ============================================================
+   MCM Unified Console — Inbox theme
+   Ported from the "MCM Unified Console" design reference.
+   Everything is scoped under .mcm-inbox so no other page inherits
+   these tokens. Light is the base; dark only redefines tokens.
+   ============================================================ */
+
+.mcm-inbox {
+  /* --- surfaces / ink / lines ---
+     Neutral, very slightly warm. The old set was a cold blue-grey
+     (#eef1f8 ground, #dfe5f0 lines) sitting inside a warm cream console, so
+     the message pane read as a grey slab bolted into the page — the single
+     loudest thing on a screen whose job is to show a conversation. These are
+     the same steps in lightness, with the blue taken out, so the pane reads
+     as paper and the ink and accent do the talking. */
+  /* Warm, not cool. The original set was blue-grey (#eef1f8 ground,
+     #dfe5f0 lines) inside a warm cream console, so the message pane read as
+     a grey slab bolted into the page. Neutral grey fixed the clash but still
+     sat apart from the cream around it; these are the same steps in
+     lightness carried into the console's own warmth, so the pane reads as
+     part of the page. Each one is a shade below white, which is what gives
+     incoming bubbles an edge without needing a shadow. */
+  --mcm-ground: #f7f2ec;
+  --mcm-surface: #ffffff;
+  --mcm-surface-2: #faf6f1;
+  --mcm-surface-3: #f0eae2;
+  --mcm-ink: #1b1815;
+  --mcm-ink-2: #4a453e;
+  /* #6a635a, not #726b62: the row preview uses this ink, and over the
+     warmest row state (selected + hovered) the lighter value measured
+     4.42:1 — just under the 4.5 threshold. */
+  --mcm-ink-3: #6a635a;
+  --mcm-ink-4: #9c948a;
+  --mcm-line: #ebe4db;
+  --mcm-line-2: #f2ece4;
+
+  /* --- accent ---
+     Swap these four to var(--primary) etc. if the inbox should follow the
+     white-label brand colour instead of the console blue. */
+  --mcm-accent: #f2994a;
+  --mcm-accent-ink: #c96f1f;
+  --mcm-accent-wash: #fff1e0;
+  --mcm-accent-edge: #ffd9ad;
+
+  /* Outgoing bubble — a tint of the accent, not the accent itself.
+
+     Two constraints pull against each other here. White on the brand orange
+     measures 2.23:1, so the message you just sent was the least legible text
+     on the page; but the fixes that buy contrast both add weight — a deeper
+     fill for white text reads as rust, and dark brown ink on the full-
+     strength orange reads as a heavy block on a cream page.
+
+     A pale tint of the same orange settles it: the fill is lighter than the
+     pane, the ink is a warm amber-brown rather than a near-black, and the
+     pair still measures 5.77:1. Three light steps tell the thread apart —
+     white incoming, cream pane, peach outgoing — with nothing dark in it. */
+  --mcm-bub-out-bg: #ffe8d1;
+  --mcm-bub-out-ink: #8a4a12;
+  /* 0.95: on a fill this pale the alpha eats contrast fast — 0.85 put the
+     send time at 4.24:1, under the threshold. */
+  --mcm-bub-out-ink-2: rgba(138, 74, 18, 0.95);
+  --mcm-bub-out-edge: #ffd7ae;
+
+  --mcm-live: #0d9488;
+  --mcm-live-wash: #dcf5f1;
+  --mcm-warn: #c2670a;
+  --mcm-warn-wash: #fdf0dc;
+  --mcm-crit: #d32f2f;
+  --mcm-crit-wash: #fde9e9;
+
+  --mcm-shadow-sm: 0 1px 2px rgba(13, 21, 38, 0.06), 0 1px 1px rgba(13, 21, 38, 0.04);
+  --mcm-shadow: 0 4px 14px rgba(13, 21, 38, 0.07), 0 1px 3px rgba(13, 21, 38, 0.05);
+  --mcm-shadow-lg: 0 18px 44px rgba(13, 21, 38, 0.14), 0 3px 10px rgba(13, 21, 38, 0.07);
+
+  --mcm-r: 12px;
+  --mcm-r-sm: 8px;
+  --mcm-r-lg: 18px;
+
+  --mcm-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --mcm-sans:
+    'Twemoji Country Flags', 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', sans-serif;
+
+  font-family: var(--mcm-sans);
+  color: var(--mcm-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.dark .mcm-inbox {
+  --mcm-ground: #0a0f1a;
+  --mcm-surface: #111827;
+  --mcm-surface-2: #161f31;
+  --mcm-surface-3: #1e293e;
+  --mcm-ink: #eef2f9;
+  --mcm-ink-2: #c3cddf;
+  --mcm-ink-3: #93a1ba;
+  --mcm-ink-4: #6b7a96;
+  --mcm-line: #26314a;
+  --mcm-line-2: #1c2537;
+
+  /* Dark keeps the bright fill and flips the text instead: white on #ffa552
+     is 1.95:1, near-black on it is 9.18:1. Deepening the fill the way light
+     mode does would have made it the darkest thing on an already dark pane
+     and lost the sent/received distinction entirely. */
+  --mcm-bub-out-bg: #ffa552;
+  --mcm-bub-out-ink: #16171a;
+  --mcm-bub-out-ink-2: rgba(0, 0, 0, 0.62);
+
+  --mcm-accent: #ffa552;
+  --mcm-accent-ink: #ffc285;
+  --mcm-accent-wash: #3a2712;
+  --mcm-accent-edge: #6b4420;
+
+  --mcm-live: #2dd4bf;
+  --mcm-live-wash: #0f2f2c;
+  --mcm-warn: #f0a24b;
+  --mcm-warn-wash: #33240f;
+  --mcm-crit: #f87171;
+  --mcm-crit-wash: #361618;
+
+  --mcm-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --mcm-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --mcm-shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* Numbers line up column-to-column; the console uses mono for every figure. */
+.mcm-inbox .mcm-num {
+  font-family: var(--mcm-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.mcm-inbox .mcm-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mcm-ink-4);
+}
+
+.mcm-inbox :focus-visible {
+  outline: 2px solid var(--mcm-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Console scrollbars: thin, on-surface, invisible track. */
+.mcm-inbox .mcm-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.mcm-inbox .mcm-scroll::-webkit-scrollbar-thumb {
+  background: var(--mcm-line);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.mcm-inbox .mcm-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--mcm-ink-4);
+  background-clip: content-box;
+}
+.mcm-inbox .mcm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============================================================
+   COLUMNS
+   ============================================================ */
+.mcm-inbox .mcm-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--mcm-surface);
+}
+.mcm-inbox .mcm-col-stage {
+  background: var(--mcm-ground);
+}
+
+.mcm-inbox .mcm-col-head {
+  /* Roomier, and the divider is the faint line rather than the strong one:
+     the head already separates itself by sitting above a list of rows, so a
+     hard rule on top of that reads as a second, competing edge. */
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--mcm-line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: none;
+}
+.mcm-inbox .mcm-col-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mcm-inbox .mcm-col-title h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--mcm-ink);
+}
+
+/* ============================================================
+   SEGMENTED CONTROL
+   ============================================================ */
+.mcm-inbox .mcm-seg {
+  display: flex;
+  width: 100%;
+  height: auto;
+  gap: 3px;
+  /* The tray is the lightest surface, not the darkest. surface-3 made the
+     control the heaviest object in a column whose job is to list messages. */
+  background: var(--mcm-surface-2);
+  border: 1px solid var(--mcm-line-2);
+  padding: 3px;
+  border-radius: 11px;
+}
+.mcm-inbox .mcm-seg button {
+  flex: 1;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mcm-ink-3);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.mcm-inbox .mcm-seg button:hover {
+  color: var(--mcm-ink);
+}
+.mcm-inbox .mcm-seg button[data-state='active'] {
+  background: var(--mcm-surface);
+  color: var(--mcm-ink);
+  box-shadow: var(--mcm-shadow-sm);
+}
+
+/* ============================================================
+   SEARCH + SELECT
+   ============================================================ */
+.mcm-inbox .mcm-search {
+  position: relative;
+}
+.mcm-inbox .mcm-search input {
+  width: 100%;
+  /* 36px, not 32: these two fields sit directly above a list of 60px rows,
+     and a cramped control above roomy content is what made the head feel
+     tighter than the body it introduces. */
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--mcm-line-2);
+  background: var(--mcm-surface-2);
+  padding: 0 32px;
+  font-size: 12.5px;
+  color: var(--mcm-ink);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+.mcm-inbox .mcm-search input:hover {
+  background: var(--mcm-surface);
+  border-color: var(--mcm-line);
+}
+.mcm-inbox .mcm-search input::placeholder {
+  color: var(--mcm-ink-4);
+}
+.mcm-inbox .mcm-search input:focus {
+  outline: none;
+  border-color: var(--mcm-accent);
+  box-shadow: 0 0 0 3px var(--mcm-accent-wash);
+}
+.mcm-inbox .mcm-search .mcm-search-ic {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mcm-ink-4);
+  display: flex;
+  pointer-events: none;
+}
+.mcm-inbox .mcm-search .mcm-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--mcm-ink-4);
+  cursor: pointer;
+}
+.mcm-inbox .mcm-search .mcm-search-clear:hover {
+  background: var(--mcm-surface-3);
+  color: var(--mcm-ink-2);
+}
+
+/* react-select, dressed as a console field */
+.mcm-inbox .mcm-did .custom-react-select__control {
+  min-height: 36px !important;
+  height: 36px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--mcm-line-2) !important;
+  background: var(--mcm-surface-2) !important;
+  box-shadow: none !important;
+  padding-left: 8px !important;
+  padding-right: 6px !important;
+  font-size: 12.5px !important;
+}
+.mcm-inbox .mcm-did .custom-react-select__control:hover {
+  border-color: var(--mcm-accent-edge) !important;
+}
+.mcm-inbox .mcm-did .custom-react-select__control--is-focused {
+  border-color: var(--mcm-accent) !important;
+  box-shadow: 0 0 0 3px var(--mcm-accent-wash) !important;
+}
+.mcm-inbox .mcm-did .custom-react-select__single-value {
+  font-family: var(--mcm-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--mcm-ink) !important;
+}
+.mcm-inbox .mcm-did .custom-react-select__placeholder {
+  font-size: 12.5px;
+  color: var(--mcm-ink-4) !important;
+}
+
+/* ============================================================
+   CONVERSATION ROWS
+   ============================================================ */
+.mcm-inbox .mcm-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.mcm-inbox .mcm-row {
+  display: flex;
+  gap: 12px;
+  /* Roomier, and separated by the faintest line the palette has. A row list
+     is read by scanning names, and hard rules between every pair compete
+     with that far more than whitespace does. */
+  padding: 13px 16px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--mcm-line-2) 60%, transparent);
+  background: none;
+  cursor: pointer;
+  position: relative;
+  text-align: left;
+  width: 100%;
+  align-items: flex-start;
+  font: inherit;
+  color: inherit;
+  transition: background 0.12s;
+}
+.mcm-inbox .mcm-row:hover {
+  background: var(--mcm-surface-2);
+}
+.mcm-inbox .mcm-row.is-active {
+  /* A wash at half strength. At full tint the selected row was the loudest
+     thing on the screen, which is backwards: selection should say "you are
+     here", not outrank the message you came to read. */
+  background: color-mix(in srgb, var(--mcm-accent-wash) 55%, var(--mcm-surface));
+}
+.mcm-inbox .mcm-row.is-active .mcm-row-name {
+  color: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-row.is-active::before {
+  content: '';
+  position: absolute;
+  /* Inset with rounded ends rather than a full-bleed bar: it reads as a
+     marker against the row instead of a seam cutting the column. */
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--mcm-accent);
+}
+.mcm-inbox .mcm-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.mcm-inbox .mcm-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.mcm-inbox .mcm-row-name {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--mcm-ink);
+}
+.mcm-inbox .mcm-row-time {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--mcm-ink-4);
+  flex: none;
+}
+.mcm-inbox .mcm-row-sub {
+  font-size: 11.5px;
+  color: var(--mcm-ink-3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 2px;
+}
+.mcm-inbox .mcm-row-sub .mcm-row-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcm-inbox .mcm-row-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+/* direction badge — squircle, tinted by direction */
+.mcm-inbox .mcm-row-av {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--mcm-ink-2);
+  background: var(--mcm-surface-3);
+}
+.mcm-inbox .mcm-row-av.dir-in {
+  background: var(--mcm-live-wash);
+  color: var(--mcm-live);
+}
+.mcm-inbox .mcm-row-av.dir-out {
+  background: var(--mcm-accent-wash);
+  color: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-row-av.dir-fail {
+  background: var(--mcm-crit-wash);
+  color: var(--mcm-crit);
+}
+
+/* ============================================================
+   TAGS / CHIPS / BADGES
+   ============================================================ */
+.mcm-inbox .mcm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.mcm-inbox .mcm-tag.pos {
+  background: var(--mcm-live-wash);
+  color: var(--mcm-live);
+}
+.mcm-inbox .mcm-tag.neg {
+  background: var(--mcm-crit-wash);
+  color: var(--mcm-crit);
+}
+.mcm-inbox .mcm-tag.neu {
+  background: var(--mcm-surface-3);
+  color: var(--mcm-ink-3);
+}
+.mcm-inbox .mcm-tag.warn {
+  background: var(--mcm-warn-wash);
+  color: var(--mcm-warn);
+}
+.mcm-inbox .mcm-tag.acc {
+  background: var(--mcm-accent-wash);
+  color: var(--mcm-accent-ink);
+  border-color: var(--mcm-accent-edge);
+}
+
+.mcm-inbox .mcm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mcm-line);
+  background: var(--mcm-surface-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mcm-ink-2);
+  white-space: nowrap;
+}
+
+.mcm-inbox .mcm-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--mcm-crit);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  font-family: var(--mcm-mono);
+  flex: none;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.mcm-inbox .mcm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.mcm-inbox .mcm-btn.primary {
+  background: var(--mcm-accent);
+  color: #fff;
+  box-shadow: var(--mcm-shadow-sm);
+}
+.mcm-inbox .mcm-btn.primary:hover {
+  background: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-btn.ghost {
+  background: var(--mcm-surface-2);
+  border-color: var(--mcm-line);
+  color: var(--mcm-ink-2);
+}
+.mcm-inbox .mcm-btn.ghost:hover {
+  border-color: var(--mcm-accent-edge);
+  color: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-btn.sm {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.mcm-inbox .mcm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* square icon button used in headers and the composer toolbar */
+.mcm-inbox .mcm-iconbtn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  display: grid;
+  place-items: center;
+  color: var(--mcm-ink-3);
+  cursor: pointer;
+  flex: none;
+  transition: all 0.12s;
+}
+.mcm-inbox .mcm-iconbtn:hover {
+  background: var(--mcm-surface-2);
+  color: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-iconbtn.is-on {
+  background: var(--mcm-accent-wash);
+  color: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-iconbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   THREAD HEADER
+   ============================================================ */
+.mcm-inbox .mcm-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 18px;
+  background: var(--mcm-surface);
+  border-bottom: 1px solid var(--mcm-line-2);
+  flex: none;
+}
+.mcm-inbox .mcm-thread-name {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  color: var(--mcm-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcm-inbox .mcm-thread-num {
+  font-size: 11.5px;
+  color: var(--mcm-ink-3);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* ============================================================
+   MESSAGE THREAD
+   ============================================================ */
+.mcm-inbox .mcm-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Roomier gutters. The bubbles are capped to a reading measure below, so
+     the extra width goes to margin instead of letting a six-word message
+     stretch halfway across a wide screen. */
+  padding: 8px 28px 20px;
+  display: flex;
+  flex-direction: column;
+  background: var(--mcm-ground);
+}
+
+/* Day separator: a hairline with the date sitting in it, rather than a
+   shadowed pill. The pill was a raised object marking something that is
+   only a divider — it drew more attention than the messages either side. */
+.mcm-inbox .mcm-daychip {
+  /* `flex: 1`, not `align-self: stretch` — the wrapper is a row, so stretch
+     works the cross (vertical) axis and left the rule shrink-wrapped. */
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mcm-ink-3);
+}
+.mcm-inbox .mcm-daychip::before,
+.mcm-inbox .mcm-daychip::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--mcm-line);
+}
+
+.mcm-inbox .mcm-bub {
+  /* A reading measure, not a share of the pane. `88%` meant line length grew
+     with the window, and long messages became hard to track back to the next
+     line on a wide monitor; ~62 characters is the comfortable range. */
+  max-width: min(62ch, 76%);
+  padding: 10px 14px;
+  /* 13.5px over 12.5px: this is the content of the page, and it was set
+     smaller than the conversation list beside it. */
+  font-size: 13.5px;
+  line-height: 1.5;
+  width: fit-content;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.mcm-inbox .mcm-bub-out {
+  align-self: flex-end;
+  background: var(--mcm-bub-out-bg);
+  color: var(--mcm-bub-out-ink);
+  font-weight: 500;
+  border-radius: 14px;
+  /* No shadow on either side. Every bubble carrying its own drop shadow put
+     dozens of soft edges on one screen, which is what made a short thread
+     look busy; the fill alone separates them from the pane. */
+  box-shadow: none;
+}
+.mcm-inbox .mcm-bub-out.is-tail {
+  border-radius: 14px 14px 4px 14px;
+}
+.mcm-inbox .mcm-bub-in {
+  align-self: flex-start;
+  /* Filled rather than outlined-on-white. Against the pane a white bubble
+     with a hairline border was nearly invisible, so incoming messages read
+     as loose text while outgoing ones read as objects. */
+  background: var(--mcm-surface);
+  border: 1px solid var(--mcm-line);
+  color: var(--mcm-ink);
+  border-radius: 14px;
+  box-shadow: none;
+}
+.mcm-inbox .mcm-bub-in.is-tail {
+  border-radius: 14px 14px 14px 4px;
+}
+
+/* Time and delivery state, inside the bubble on its own line, aligned to the
+   trailing edge. See the note in index.tsx for why they moved in here. */
+.mcm-inbox .mcm-bub-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: -1px;
+  line-height: 1;
+}
+/* ink-3, not ink-4: at 10.5px the lightest ink measured 2.7:1 on white, and
+   the send time is a fact people check, not decoration. */
+.mcm-inbox .mcm-bub-time {
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  color: var(--mcm-ink-3);
+}
+/* On the filled bubble the muted ink and the green/red status colours have
+   no contrast, so both step to the fill's own secondary foreground. */
+.mcm-inbox .mcm-bub-out .mcm-bub-time,
+.mcm-inbox .mcm-bub-out .mcm-bub-meta,
+.mcm-inbox .mcm-bub-out .mcm-bub-meta.pos,
+.mcm-inbox .mcm-bub-out .mcm-bub-meta.neg {
+  color: var(--mcm-bub-out-ink-2);
+}
+.mcm-inbox .mcm-bub-out .mcm-showmore {
+  color: var(--mcm-bub-out-ink);
+}
+.mcm-inbox .mcm-bub a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.mcm-inbox .mcm-bub-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--mcm-ink-4);
+}
+.mcm-inbox .mcm-bub-meta.pos {
+  color: var(--mcm-live);
+}
+.mcm-inbox .mcm-bub-meta.neg {
+  color: var(--mcm-crit);
+}
+
+.mcm-inbox .mcm-showmore {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+  align-self: flex-start;
+  opacity: 0.85;
+}
+.mcm-inbox .mcm-showmore:hover {
+  opacity: 1;
+}
+.mcm-inbox .mcm-bub-out .mcm-showmore {
+  color: #fff;
+}
+.mcm-inbox .mcm-bub-in .mcm-showmore {
+  color: var(--mcm-accent-ink);
+}
+
+.mcm-inbox .mcm-jump {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 99px;
+  border: 1px solid var(--mcm-line);
+  background: var(--mcm-surface);
+  box-shadow: var(--mcm-shadow-lg);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--mcm-ink-2);
+  cursor: pointer;
+}
+.mcm-inbox .mcm-jump:hover {
+  border-color: var(--mcm-accent-edge);
+  color: var(--mcm-accent-ink);
+}
+
+/* ============================================================
+   COMPOSER
+   ============================================================ */
+.mcm-inbox .mcm-composer {
+  /* No top border and no tinted band. The shell below is already a raised
+     card on the thread ground, so the extra rule and fill were a second and
+     third edge stacked under the first. */
+  background: transparent;
+  padding: 12px 16px 16px;
+  flex: none;
+}
+.mcm-inbox .mcm-composer-shell {
+  border: 1px solid var(--mcm-line-2);
+  border-radius: 14px;
+  background: var(--mcm-surface);
+  /* Lifted rather than outlined: the shadow is what separates it from the
+     thread, so the border can drop to the faint line. */
+  box-shadow: var(--mcm-shadow-sm);
+  padding: 12px 14px 8px;
+  transition: all 0.12s;
+}
+.mcm-inbox .mcm-composer-shell:focus-within {
+  border-color: var(--mcm-accent);
+  box-shadow: 0 0 0 3px var(--mcm-accent-wash);
+}
+.mcm-inbox .mcm-composer-shell.is-busy {
+  background: var(--mcm-surface-2);
+  border-color: var(--mcm-line);
+}
+.mcm-inbox .mcm-composer textarea {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--mcm-ink);
+  resize: none;
+  max-height: 120px;
+  min-height: 20px;
+}
+.mcm-inbox .mcm-composer textarea:focus {
+  outline: none;
+  box-shadow: none;
+}
+.mcm-inbox .mcm-composer textarea::placeholder {
+  color: var(--mcm-ink-4);
+}
+.mcm-inbox .mcm-composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.mcm-inbox .mcm-sendbtn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 11px;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--mcm-accent) 35%, transparent);
+  background: var(--mcm-accent);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex: none;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.mcm-inbox .mcm-sendbtn:hover:not(:disabled) {
+  background: var(--mcm-accent-ink);
+}
+.mcm-inbox .mcm-sendbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* The hint row reads as part of the composer, not as loose text lying on
+   the ground beneath it -- which is how it looked when the shell had a fill
+   of its own and this sat outside it. */
+.mcm-inbox .mcm-composer-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 4px 0;
+  font-size: 10.5px;
+  color: var(--mcm-ink-4);
+}
+
+/* attachment card above the composer */
+.mcm-inbox .mcm-attach {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 6px;
+  margin-bottom: 8px;
+  border: 1px solid var(--mcm-line);
+  border-radius: 10px;
+  background: var(--mcm-surface);
+  width: fit-content;
+  max-width: 100%;
+}
+.mcm-inbox .mcm-attach-thumb {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  overflow: hidden;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--mcm-surface-3);
+  color: var(--mcm-ink-3);
+}
+.mcm-inbox .mcm-attach-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.mcm-inbox .mcm-attach-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mcm-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.mcm-inbox .mcm-attach-sub {
+  font-size: 10.5px;
+  color: var(--mcm-ink-4);
+  margin-top: 1px;
+}
+
+/* ============================================================
+   EMPTY / SKELETON
+   ============================================================ */
+.mcm-inbox .mcm-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--mcm-ink-4);
+  text-align: center;
+  padding: 36px 24px;
+}
+.mcm-inbox .mcm-empty-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--mcm-ink-2);
+}
+.mcm-inbox .mcm-empty p {
+  margin: 0;
+  font-size: 12.5px;
+  max-width: 250px;
+  line-height: 1.5;
+}
+.mcm-inbox .mcm-empty-ic {
+  width: 34px;
+  height: 34px;
+  opacity: 0.5;
+}
+
+@keyframes mcm-shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.mcm-inbox .mcm-skel {
+  background: var(--mcm-surface-3);
+  border-radius: 6px;
+  animation: mcm-shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcm-inbox .mcm-skel {
+    animation: none;
+  }
+}
+
+/* Empty pane: the picker sits on its own line at the top right, so the
+   pane keeps a header even with nothing selected. */
+.mcm-inbox .mcm-empty-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--mcm-line-2);
+  background: var(--mcm-surface);
+  flex: none;
+}
+
+/* ============================================================
+   LIST COLUMN — TONAL LADDER
+   The column was white end to end: white panel, white header, white
+   rows, so nothing separated the controls from the conversations
+   except hairlines. Four steps of the existing scale now do that work,
+   which means the borders can stay faint.
+   ============================================================ */
+
+/* 1. The header is the lightest thing, and sits proud of the list. */
+.mcm-inbox .mcm-col-head {
+  background: var(--mcm-surface);
+  box-shadow: 0 1px 0 var(--mcm-line-2);
+  position: relative;
+  z-index: 1;
+}
+
+/* 2. Its two controls step down, and differ from each other so the
+      search field and the mode switch do not read as one block. */
+.mcm-inbox .mcm-col-head .mcm-search input {
+  background: var(--mcm-surface-2);
+}
+.mcm-inbox .mcm-col-head .mcm-seg {
+  background: var(--mcm-surface-3);
+  border-color: transparent;
+}
+
+/* 3. The conversation list sits on the tint, so every row is already
+      separated from the header without a rule between them. */
+.mcm-inbox .mcm-list {
+  background: var(--mcm-surface-2);
+}
+.mcm-inbox .mcm-row {
+  background: transparent;
+}
+
+/* 4. Hover and selection come back up to the accent, so the row under the
+      pointer is the warmest thing in the list.
+
+      Hover was plain white, which on a cream list is a colourless flash and
+      says "something happened here" without saying it belongs to this app.
+      A light wash of the brand orange, at roughly half the strength of the
+      selected row, keeps the two distinguishable: hover is a hint, selection
+      is the state. */
+.mcm-inbox .mcm-row:hover {
+  /* Mixed from the accent itself, not from `--mcm-accent-wash`. The wash is
+     already a near-white tint, so mixing it *further* into white lands at
+     #fffaf4 — lighter than the cream list it sits on, which is why both the
+     old white hover and a wash-based one were invisible. A small percentage
+     of the full-strength orange moves toward the theme rather than away
+     from it. */
+  background: color-mix(in srgb, var(--mcm-accent) 11%, var(--mcm-surface));
+}
+.mcm-inbox .mcm-row.is-active {
+  background: color-mix(in srgb, var(--mcm-accent-wash) 70%, var(--mcm-surface));
+}
+
+/* The empty tail below the last conversation keeps the list tone rather
+   than dropping back to white halfway down the column.
+
+   Restated after it, not before: this rule and `.mcm-col-stage` have the
+   same specificity, so declaring `.mcm-col` later was quietly repainting
+   the conversation pane in the list's tone and collapsing the two columns
+   into one flat surface. */
+.mcm-inbox .mcm-col {
+  background: var(--mcm-surface-2);
+}
+.mcm-inbox .mcm-col-stage {
+  background: var(--mcm-ground);
+}
+
+/* The pinned mode switch at the foot of the list column. `flex: none` keeps
+   it out of the scrolling area above it, and the top edge is a shadow rather
+   than a border so it reads as a bar the list runs under. */
+.mcm-inbox .mcm-col-foot {
+  flex: none;
+  padding: 10px 14px;
+  background: var(--mcm-surface);
+  box-shadow: 0 -1px 0 var(--mcm-line-2);
+  position: relative;
+  z-index: 1;
+}
+/* On its own white bar the tray steps down again, same as it did in the
+   header. */
+.mcm-inbox .mcm-col-foot .mcm-seg {
+  background: var(--mcm-surface-3);
+  border-color: transparent;
+}
+
+/* ============================================================
+   NEW MESSAGE / NEW FAX — CENTRED FORM DIALOG
+   Carries `.mcm-inbox` so the console's tokens resolve inside a
+   dialog that Radix portals out to <body>.
+   ============================================================ */
+.mcm-formdialog {
+  background: var(--mcm-surface) !important;
+  border: 1px solid var(--mcm-line-2) !important;
+  border-radius: 16px !important;
+  overflow: hidden;
+  box-shadow: var(--mcm-shadow-lg) !important;
+}
+
+/* The body sits a step below the dialog's own surface, so the white fields
+   inside it read as fields rather than as more of the same sheet -- which is
+   what made the old drawer look like one flat grey panel. */
+.mcm-formdialog .mcm-formdialog-body {
+  background: var(--mcm-surface-2);
+  max-height: min(78vh, 720px);
+  overflow-y: auto;
+  padding: 22px 24px 20px;
+}
+
+/* Fields come back up to white on that tint. */
+.mcm-formdialog input:not([type='checkbox']):not([type='radio']),
+.mcm-formdialog textarea,
+.mcm-formdialog .custom-react-select__control {
+  background: var(--mcm-surface) !important;
+  border-color: var(--mcm-line) !important;
+}
+
+/* The message box is the subject of this form, so it gets the deepest
+   surround and the field itself stays white inside it. */
+.mcm-formdialog textarea {
+  border-radius: 10px !important;
+}
+
+.mcm-formdialog label,
+.mcm-formdialog .mcm-form-label {
+  color: var(--mcm-ink-2);
+  font-weight: 600;
+}
+
+/* ============================================================
+   SENDING-LINE CONTROL
+   Two buttons sharing one pill: the face steps to the next number,
+   the caret opens the list. Plain buttons, so nothing here is
+   fighting a third-party control's own styles.
+   ============================================================ */
+.mcm-inbox .mcm-linepick {
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--mcm-accent-wash);
+  overflow: hidden;
+}
+.mcm-inbox .mcm-linepick-face,
+.mcm-inbox .mcm-linepick-more {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--mcm-accent-ink);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.mcm-inbox .mcm-linepick-face {
+  min-width: 32px;
+  padding: 0 3px 0 7px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.mcm-inbox .mcm-linepick-more {
+  width: 26px;
+  padding-right: 3px;
+  opacity: 0.65;
+}
+.mcm-inbox .mcm-linepick-face:hover:not(:disabled),
+.mcm-inbox .mcm-linepick-more:hover,
+.mcm-inbox .mcm-linepick-more[data-state='open'] {
+  background: color-mix(in srgb, var(--mcm-accent) 20%, transparent);
+}
+/* One number: stepping is meaningless, so the face stops offering it while
+   still reading as the label it is. */
+.mcm-inbox .mcm-linepick-face:disabled {
+  cursor: default;
+}
+/* The seam between the two halves. A full-height rule cut the pill in two
+   and read as a border; inset top and bottom it reads as a join. */
+.mcm-inbox .mcm-linepick-more::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 1px;
+  background: color-mix(in srgb, var(--mcm-accent) 28%, transparent);
+}
+.mcm-inbox .mcm-linepick-more {
+  position: relative;
+}
+
+/* The list. Portalled out of .mcm-inbox, so it carries its own colours. */
+.mcm-linepick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.mcm-linepick-item .mcm-linepick-n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #fff1e0;
+  color: #c96f1f;
+  font-size: 11px;
+  font-weight: 800;
+}
+.dark .mcm-linepick-item .mcm-linepick-n {
+  background: #3a2712;
+  color: #ffc285;
+}
+
+/* ============================================================
+   COMPOSER — TOOLBAR AND SEND
+   ============================================================ */
+
+/* The toolbar sits on its own strip. Without a divider the icons floated
+   in the same white field as the text, so the box read as one empty
+   rectangle with things scattered in it. */
+.mcm-inbox .mcm-composer-bar {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--mcm-line-2);
+}
+
+/* Disabled goes neutral rather than a faded accent. A washed-out orange
+   circle reads as a broken primary button; a grey one reads as "not yet". */
+.mcm-inbox .mcm-sendbtn:disabled {
+  background: var(--mcm-surface-3) !important;
+  color: var(--mcm-ink-4) !important;
+  box-shadow: none !important;
+  opacity: 1;
+}
+/* Enabled, it is the one thing on the strip carrying colour. */
+.mcm-inbox .mcm-sendbtn:not(:disabled) {
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--mcm-accent) 40%, transparent);
+}
+.mcm-inbox .mcm-sendbtn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--mcm-accent) 48%, transparent);
+}
+.mcm-inbox .mcm-sendbtn:not(:disabled):active {
+  transform: translateY(0);
+}
+
+/* The attach and emoji buttons get a resting shape, so they are obviously
+   buttons before the pointer reaches them. */
+.mcm-inbox .mcm-composer-bar .mcm-iconbtn {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--mcm-ink-3);
+}
+.mcm-inbox .mcm-composer-bar .mcm-iconbtn:hover {
+  background: var(--mcm-surface-2);
+  color: var(--mcm-accent-ink);
+}
+
+
+/* ============================================================
+   CONVERSATION PANE — COLOUR
+   The pane was three near-whites stacked: a #eef1f8 ground, white
+   incoming bubbles and a white composer, so nothing had an edge and
+   the whole middle read as blank paper.
+   ============================================================ */
+
+/* The problem this section originally set out to solve is real: a pale
+   ground under white bubbles left the pane with no edges. It was fixed by
+   deepening the ground to a hard #e6ebf5, which traded "no edges" for a
+   blue-grey slab in the middle of a warm console.
+
+   The edge comes from the ground/bubble step instead, in neutral: the ground
+   is a shade below white, incoming bubbles stay white with a hairline, and
+   the accent does the rest.
+
+   Flat, no gradient — 04b07a6 ("Replace multi-layer gradient page
+   backgrounds with flat solid colors") took the warm pool out of this rule
+   upstream, and the neutral ground does not need one. Both themes read the
+   token, which already resolves per theme, so the two rules that used to
+   differ here collapse into one. */
+.mcm-inbox .mcm-thread {
+  background-color: var(--mcm-ground);
+}
+
+/* One hairline and a shadow barely off zero. Two stacked shadows per bubble
+   is what made a four-message thread look busy. */
+.mcm-inbox .mcm-bub-in {
+  border-color: var(--mcm-line);
+  box-shadow: 0 1px 1px rgba(16, 17, 20, 0.03);
+}
+
+/* Flat fill. The gradient plus an accent-coloured glow made each outgoing
+   message a lit object; at three in a row the thread read as a row of
+   buttons rather than a conversation.
+
+   A hairline in the same family as the fill, matching the one incoming
+   bubbles carry: at this lightness the fill alone leaves the bubble's edge
+   soft against the pane. */
+.mcm-inbox .mcm-bub-out {
+  background: var(--mcm-bub-out-bg);
+  border: 1px solid var(--mcm-bub-out-edge);
+  box-shadow: none;
+}
+
+/* Delivered is a success, so it takes the positive colour. */
+.mcm-inbox .mcm-bub-meta.pos {
+  color: var(--mcm-live);
+}
+
+/* Selected row, lighter. It was carrying three signals at once -- a 70%
+   accent wash, an accent-coloured name and the bar -- which made the row
+   you had already chosen the loudest thing in a column you are scanning for
+   the next one. The wash drops to a hint and the name returns to normal
+   ink; the bar alone is enough to say which row is open. */
+/* Mixed from the accent for the same reason as hover above: at 32% of the
+   wash this landed on #fffaf5, a hair lighter than the list itself, so the
+   selected row was marked by its bar alone. A step past hover keeps the two
+   readable as a pair — hover is a hint, selection is the state — while
+   staying a tint rather than a fill. */
+.mcm-inbox .mcm-row.is-active {
+  background: color-mix(in srgb, var(--mcm-accent) 18%, var(--mcm-surface));
+}
+.mcm-inbox .mcm-row.is-active .mcm-row-name {
+  color: var(--mcm-ink);
+}
+.mcm-inbox .mcm-row.is-active:hover {
+  background: color-mix(in srgb, var(--mcm-accent) 23%, var(--mcm-surface));
+}
+
+/* ============================================================
+   LIST COLUMN — WARM TOP AND BOTTOM BARS
+   The header and the mode switch were white, the list between them a
+   cool grey. Warming both ends frames the conversations instead of
+   letting the column run edge to edge in one temperature.
+   ============================================================ */
+.mcm-inbox .mcm-col-head,
+.mcm-inbox .mcm-col-foot {
+  background: color-mix(in srgb, var(--mcm-accent) 9%, var(--mcm-surface));
+}
+.mcm-inbox .mcm-col-head {
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--mcm-accent) 16%, transparent);
+}
+.mcm-inbox .mcm-col-foot {
+  box-shadow: 0 -1px 0 color-mix(in srgb, var(--mcm-accent) 16%, transparent);
+}
+
+/* On a warm bar the controls go white rather than the cool grey they had:
+   a blue-grey field on an orange-tinted bar reads as a mismatch, and white
+   is what makes them look like controls sitting on the bar. */
+.mcm-inbox .mcm-col-head .mcm-search input {
+  background: var(--mcm-surface);
+  border-color: color-mix(in srgb, var(--mcm-accent) 20%, transparent);
+}
+.mcm-inbox .mcm-col-head .mcm-search input:hover {
+  border-color: color-mix(in srgb, var(--mcm-accent) 34%, transparent);
+}
+.mcm-inbox .mcm-col-foot .mcm-seg {
+  background: color-mix(in srgb, var(--mcm-accent) 13%, var(--mcm-surface));
+  border-color: transparent;
+}
+.mcm-inbox .mcm-col-foot .mcm-seg button[data-state='active'] {
+  background: var(--mcm-surface);
+  color: var(--mcm-accent-ink);
+}
+
+/* The pill's label. Without it the control was a number and a caret, which
+   reads as decoration until you happen to hover it. */
+.mcm-inbox .mcm-linepick-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 4px 0 10px;
+}
+.mcm-inbox .mcm-linepick-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+/* ============================================================
+   COMPOSER — SOFT PILL
+   Shaped after Gemini's input: one heavily rounded field, the tools
+   sitting inside it rather than in a divided strip, and a round send.
+   The palette stays this console's -- warm accent, same tokens -- so
+   it reads as the same product rather than a borrowed component.
+   ============================================================ */
+.mcm-inbox .mcm-composer-shell {
+  border-radius: 26px;
+  padding: 14px 16px 10px;
+  border-color: color-mix(in srgb, var(--mcm-line) 80%, transparent);
+  box-shadow:
+    0 1px 2px rgba(13, 21, 38, 0.04),
+    0 6px 20px rgba(13, 21, 38, 0.06);
+}
+/* The focus state is a soft warm halo rather than a hard ring, which is what
+   makes the field feel like a surface you type into instead of a bordered
+   input box. */
+.mcm-inbox .mcm-composer-shell:focus-within {
+  border-color: color-mix(in srgb, var(--mcm-accent) 45%, transparent);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--mcm-accent) 12%, transparent),
+    0 6px 22px rgba(13, 21, 38, 0.07);
+}
+
+/* No divider. The tools belong to the same field as the text, and the rule
+   between them was what made this read as a box with a toolbar bolted on. */
+.mcm-inbox .mcm-composer-bar {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Round, and larger, so it reads as the one action in the field. */
+.mcm-inbox .mcm-sendbtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+}
+
+/* The tool icons go round too, so nothing in the field is a square. */
+.mcm-inbox .mcm-composer-bar .mcm-iconbtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+}
+
+/* A little more room to type before it scrolls. */
+.mcm-inbox .mcm-composer textarea {
+  font-size: 13px;
+  line-height: 1.55;
+  max-height: 148px;
+}
+
+/* ============================================================
+   PHONE FIELD — NO FLAG
+   With the country fixed to India the flag was a constant: the same
+   image on every row of every form, in its own bordered box, pushing
+   the number it belongs to sideways. The dial code carries the same
+   information in less space and reads as part of the number.
+   ============================================================ */
+.mcm-formdialog .react-tel-input .flag-dropdown {
+  display: none !important;
+}
+/* The input's left padding existed to clear the flag box, so it comes back
+   in line with every other field in the form. */
+.mcm-formdialog .react-tel-input .form-control {
+  width: 100% !important;
+  padding-left: 14px !important;
+  height: 40px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--mcm-line) !important;
+  background: var(--mcm-surface) !important;
+  font-size: 13px !important;
+  letter-spacing: 0.01em;
+}
+.mcm-formdialog .react-tel-input .form-control:focus {
+  border-color: color-mix(in srgb, var(--mcm-accent) 55%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mcm-accent) 14%, transparent) !important;
+}
+
+/* ============================================================
+   THREAD — ALIGNMENT AND LINE LENGTH
+   ============================================================ */
+
+/* A short conversation hugs the composer instead of floating at the top of
+   an empty pane. `margin-top: auto` on the first child pushes the whole
+   stack down; once the thread is taller than the pane it has no effect and
+   normal scrolling takes over. */
+.mcm-inbox .mcm-thread > *:first-child {
+  margin-top: auto;
+}
+
+/* 88% of a wide pane is around 140 characters a line, roughly double what
+   is comfortable to read. The ch cap holds the measure steady as the pane
+   grows; the percentage keeps short panes from squeezing. */
+.mcm-inbox .mcm-bub {
+  max-width: min(65ch, 78%);
+}
+
+/* Grouped messages sit tight together, so the gap between speakers is the
+   thing that separates them rather than a uniform rhythm throughout. */
+.mcm-inbox .mcm-bub-out:not(.is-tail) {
+  border-bottom-right-radius: 5px;
+}
+.mcm-inbox .mcm-bub-in:not(.is-tail) {
+  border-bottom-left-radius: 5px;
+}

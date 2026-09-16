@@ -1,0 +1,2138 @@
+/**
+ * Demo mode — a signed-in shell with no backend behind it.
+ *
+ * It exists so the UI can be worked on without an account on whatever API the
+ * deployment points at. A session token is seeded before React mounts, so the
+ * route guards treat the app as authenticated and `/` lands on the dashboard,
+ * and every API call is answered locally instead of going out.
+ *
+ * Most lists come back with no rows, so screens render their real empty
+ * states. The exception is the contact centre in `demo-contact-centre.ts` —
+ * queues, agents, a call log, IVR flows, campaigns, SMS, contact lists, tasks
+ * and voicemail — because Performance's tables and stat cards cannot be
+ * worked on against nothing. All of it is invented and Indian throughout
+ * (agents, contacts, +91 numbers). Nothing here reflects a real account, and
+ * no screen showing this data is showing anything true about a customer.
+ *
+ * It can only ever run on a preview host — a `vercel.app` domain or a local dev
+ * server, per `isPreviewHost`. On a real domain the checks below return false
+ * whatever the environment says, so a stray `VITE_DEMO_MODE=true` in a
+ * production build cannot open a hole: it is a build that never runs on a host
+ * where the flag is consulted. Set `VITE_DEMO_MODE=false` to turn it off on a
+ * preview host and sign in against the real API instead.
+ */
+import { isPreviewHost } from '@/lib/utils';
+import { demoAiVoiceRows } from '@/lib/demo-ai-voices';
+import { demoAiSessionRows } from '@/lib/demo-ai-sessions';
+import { demoCrawledPages } from '@/lib/demo-site-crawl';
+import { getDemoReviewJob, startDemoReviewJob } from '@/lib/demo-knowledge-review';
+import { resolveCaptainRequest } from '@/lib/demo-captain';
+import {
+  DEMO_AGENTS,
+  demoAgentReportRows,
+  demoAssignedDidRows,
+  demoCallHandlingTemplateRows,
+  demoCallStats,
+  demoCalls,
+  mulberry32,
+  demoCalendarTaskRows,
+  demoCallQueueInvolvements,
+  demoCampaignRows,
+  demoContactBookRows,
+  demoContactGroupRows,
+  demoDepartmentRows,
+  demoDncRows,
+  demoFaxConversations,
+  demoFaxMessages,
+  demoFlowRows,
+  demoQueueCallLogDetail,
+  filterCallsByDateRange,
+  demoInboundCallRows,
+  demoLocalCallRows,
+  demoMeetingRows,
+  demoRecordingRows,
+  demoSiteRows,
+  demoTemplateRows,
+  demoQueueReportRows,
+  demoQueueRows,
+  demoSmsConversations,
+  demoSmsLogRows,
+  demoSmsThreadRows,
+  demoVoicemailRows,
+} from '@/lib/demo-contact-centre';
+
+export const DEMO_SESSION_TOKEN = 'demo-mode-session-token';
+
+export const isDemoMode = () => {
+  if (!isPreviewHost()) return false;
+
+  return String(import.meta.env.VITE_DEMO_MODE ?? '').toLowerCase() !== 'false';
+};
+
+/** Route guards read dotted paths and require exactly `true` at the leaf. */
+const grant = (paths: string[]) => {
+  const root: Record<string, any> = {};
+
+  for (const path of paths) {
+    const keys = path.split('.');
+    let node = root;
+    keys.forEach((key, index) => {
+      if (index === keys.length - 1) {
+        node[key] = true;
+        return;
+      }
+      if (typeof node[key] !== 'object' || node[key] === null) node[key] = {};
+      node = node[key];
+    });
+  }
+
+  return root;
+};
+
+/* Every key the route guards in src/router/index.tsx check, so demo mode can
+   reach each screen rather than bouncing to an upgrade prompt. */
+const PLAN_FEATURES = grant([
+  'ai.IS_SHOW',
+  /* The AI screens gate their Create and Analytics buttons on `.add`, and the
+     row menus on `.edit`/`.delete` - not on `.view`. Granting only `view` left
+     the Chat Agents page with no way to create an agent at all. */
+  'ai.action.agent.view',
+  'ai.action.agent.add',
+  'ai.action.agent.edit',
+  'ai.action.agent.delete',
+  'ai.action.domain.view',
+  'ai.action.domain.add',
+  'ai.action.domain.edit',
+  'ai.action.domain.delete',
+  'ai.action.knowledge_base.view',
+  'ai.action.knowledge_base.add',
+  'ai.action.knowledge_base.edit',
+  'ai.action.knowledge_base.delete',
+  'ai.access.CHAT',
+  'ai.access.VOICE',
+  'account_setting.access.SITE.action.view',
+  'account_setting.access.SITE.action.add',
+  'account_setting.access.SITE.action.edit',
+  'account_setting.access.SITE.action.delete',
+  'account_setting.access.USER.action.view',
+  'account_setting.access.USER.action.add',
+  'account_setting.access.USER.action.edit',
+  'account_setting.access.USER.action.delete',
+  'advance_call_management.access.RECORDING',
+  'advance_call_management.access.TRANSCRIPTION',
+  'billing.action.view',
+  'calling_rates.IS_SHOW',
+  'calling_rates.action.view',
+  'campaign.IS_SHOW',
+  'campaign.action.view',
+  'chat.IS_SHOW',
+  'chat.action.view',
+  'chat.access.DIRECT_MESSAGE',
+  'chat.access.TEAM_MESSAGE',
+  'chat.access.UPLOAD_FILES',
+  'chat.access.CHAT_VIDEO',
+  'chat.create_folder',
+  'chat.create_note',
+  'contact.IS_SHOW',
+  'contact.action.view',
+  'integration.IS_SHOW',
+  'integration.action.view',
+  'messages.IS_SHOW',
+  'messages.action.send_fax',
+  'messages.action.send_message',
+  'messages.action.send_mms',
+  'monitoring.action.view',
+  'monitoring_features.action.barge',
+  'monitoring_features.action.hangup',
+  'monitoring_features.action.intercept',
+  'monitoring_features.action.listen',
+  'monitoring_features.action.whisper',
+  'omni_channel.IS_SHOW',
+  'omni_channel.access',
+  'omni_channel.action.view',
+  'phone_system.EXTENSION',
+  'phone_system.VOICEMAIL',
+  'phone_system_action.IS_SHOW',
+  'phone_system_action.access.ANNOUNCEMENT',
+  'phone_system_action.access.DEPARTMENT',
+  'phone_system_action.access.IVR',
+  'phone_system_action.access.QUEUE',
+  'phone_system_action.action.view',
+  'phone_system_action.action.add',
+  'phone_system_action.action.edit',
+  'reports.IS_SHOW',
+  'reports.action.call_recording_listen',
+  'reports.action.sms',
+  'settings.action.greeting.view',
+  'video.IS_SHOW',
+  'video.access.RECORDING',
+  'video.action.view',
+  'video.action.create',
+  'virtual_numbers.action.view',
+  'virtual_numbers.action.assign_number',
+]);
+
+/** Shaped like the `/api/user/info` result the app hydrates the session from. */
+export const DEMO_USER = {
+  token: DEMO_SESSION_TOKEN,
+  uuid: 'demo-user-0000-0000-0000-000000000001',
+  plan_uuid: 'demo-plan-0000-0000-0000-000000000001',
+  user_info: {
+    uuid: 'demo-user-0000-0000-0000-000000000001',
+    first_name: 'Arjun',
+    last_name: 'Mehta',
+    name: 'Arjun Mehta',
+    email: 'arjun.mehta@example.com',
+    /* ADMIN so the guards read company plan features rather than a role's,
+       and admin-only pages stay reachable. */
+    role: 'ADMIN',
+    extension: '1001',
+    status: 1,
+    timezone: 'Asia/Kolkata',
+    plan_features: PLAN_FEATURES,
+  },
+  /* Inbox's "Your number" picker reads `user.assigned_did` off the top-level
+     session object the app hydrates `user` from (`{...data}` in
+     UserContext) — not off `user_info` — so it has to sit here rather than
+     nested, or the dropdown and its default-number effect have nothing to
+     work with. */
+  assigned_did: demoAssignedDidRows(),
+  company_info: {
+    uuid: 'demo-company-0000-0000-0000-000000000001',
+    company_name: 'Demo Company',
+    /* AuthProvider sends anyone without this to /phone-lines-auth. */
+    free_did: true,
+    is_trial: 'N',
+    currency: 'INR',
+    country: 'IN',
+    timezone: 'Asia/Kolkata',
+    plan_features: PLAN_FEATURES,
+    /* The header wallet pill and dialpad balance both read this — without a
+       figure here they showed a bare, symbol-less "00.00" that didn't read
+       as money at all. `formatMoney` converts this the same as every other
+       billing figure, so it lands as a plausible ₹20,376.50 balance. */
+    amount: 245.5,
+  },
+};
+
+/**
+ * A list that answers to every shape the screens unwrap results with — `result`
+ * itself, `result.rows`, `result.data`. It is a real array, so a screen that
+ * maps straight over it works, and it carries the same rows on the properties a
+ * paginated screen reaches for.
+ */
+/**
+ * `page`/`limit` come third rather than being folded into `extra`: every
+ * TableManager screen sends them on every request (a "per page" picker, a
+ * page-forward click), and until this read them the same full array came
+ * back for page 1 and page 2 alike — a 64-row call log under a 25-per-page
+ * table showed all 64 with no second page to click to. Passing the raw
+ * request body here is enough; page/limit default to "no real paging" (one
+ * page holding everything) when the caller doesn't have them or the list is
+ * always small, so most call sites need change nothing.
+ */
+const listPayload = (
+  items: any[] = [],
+  extra: Record<string, any> = {},
+  requestData?: unknown,
+) => {
+  const totalItems = items.length;
+  const requested = asObject(requestData);
+  const page = Math.max(1, Number(requested?.page) || 1);
+  const limit = Number(requested?.limit) || totalItems || 1;
+  const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+  const start = (page - 1) * limit;
+  const pageItems = limit >= totalItems ? items : items.slice(start, start + limit);
+
+  const list: any = [...pageItems];
+  list.data = pageItems;
+  list.rows = pageItems;
+  list.total = totalItems;
+  list.count = totalItems;
+  list.totalItems = totalItems;
+  list.totalPages = totalPages;
+  list.current_page = page;
+  list.last_page = totalPages;
+  /* Aggregates a screen reads off the result alongside the rows — the call
+     log's `call_stats`, for instance. */
+  Object.assign(list, extra);
+  return list;
+};
+
+const ok = (result: unknown) => ({
+  success: true,
+  status: true,
+  message: 'Demo mode',
+  data: { message: 'Demo mode', result },
+  result,
+});
+
+/* ---------------------------------------------------------------------------
+   A small store so the management screens behave, not just render.
+
+   Creating a user, editing one, assigning a role or defining a custom role all
+   write here and show up in the lists afterwards, which is what makes those
+   screens worth working on. It lives in localStorage, so a reload keeps what
+   was entered; clearing site data resets it to the seed below.
+
+   Everything in it is visibly fake — example.com addresses, "Demo" names — so
+   nothing on screen can be mistaken for a real customer's data.
+--------------------------------------------------------------------------- */
+
+/* Bumped when the seed changes: the store is persisted, so an existing
+   browser would otherwise keep serving the previous, smaller roster. */
+const STORE_KEY = 'demo-mode-data-v4';
+
+/* `company_uuid: 'PREDEFINED'` is what marks a role as one of the platform's
+   built-in starting points — `add-new-role/select-role` filters on exactly
+   this to build its "Select a role to use as a starting point" list, and
+   `permission.plan_features` is what its permissions accordion reads. Seed
+   roles carried neither, so both of those rendered empty. */
+const ROLE_SEED = [
+  {
+    uuid: 'demo-role-admin',
+    name: 'Administrator',
+    slug: 'ADMIN',
+    is_custom: false,
+    company_uuid: 'PREDEFINED',
+    description: 'Full access — billing, users, numbers and every setting.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-subadmin',
+    name: 'Sub Admin',
+    slug: 'SUB_ADMIN',
+    is_custom: false,
+    company_uuid: 'PREDEFINED',
+    description: 'Runs day-to-day settings without billing or plan changes.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-manager',
+    name: 'Manager',
+    slug: 'MANAGER',
+    is_custom: false,
+    company_uuid: 'PREDEFINED',
+    description: 'Oversees a team — queues, reports and their own department.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-agent',
+    name: 'Agent',
+    slug: 'AGENT',
+    is_custom: false,
+    company_uuid: 'PREDEFINED',
+    description: 'Takes calls and chats — no settings or other people’s data.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-supervisor',
+    name: 'Supervisor',
+    slug: 'SUPERVISOR',
+    is_custom: true,
+    description: 'Monitors live queues and can barge into calls.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-billing',
+    name: 'Billing Specialist',
+    slug: 'BILLING_SPECIALIST',
+    is_custom: true,
+    description: 'Invoices, refunds and payment methods only.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+  {
+    uuid: 'demo-role-readonly',
+    name: 'Read Only',
+    slug: 'READ_ONLY',
+    is_custom: true,
+    description: 'Can view every screen, cannot change anything.',
+    permission: { plan_features: PLAN_FEATURES },
+  },
+];
+
+/** A couple of voices per language the greeting text-to-speech screen offers. */
+const DEMO_VOICES = [
+  { short_name: 'en-US-demo-1', display_name: 'Ava', gender: 'Female', locale: 'en-US' },
+  { short_name: 'en-US-demo-2', display_name: 'Guy', gender: 'Male', locale: 'en-US' },
+  { short_name: 'hi-IN-demo-1', display_name: 'Swara', gender: 'Female', locale: 'hi-IN' },
+  { short_name: 'hi-IN-demo-2', display_name: 'Madhur', gender: 'Male', locale: 'hi-IN' },
+  { short_name: 'es-ES-demo-1', display_name: 'Elvira', gender: 'Female', locale: 'es-ES' },
+  { short_name: 'ar-SA-demo-1', display_name: 'Hamed', gender: 'Male', locale: 'ar-SA' },
+];
+
+/* A ~1-second silent WAV — there is no real speech engine behind demo mode,
+   so this stands in for "the synthesized clip" wherever one is needed
+   (audio preview player, the file handed to Upload). */
+const DEMO_SILENT_WAV_BASE64 =
+  'UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=';
+
+const buildUser = (
+  first: string,
+  last: string,
+  role: string,
+  roleName: string,
+  extension: string,
+  phone = '',
+  site = '',
+) => ({
+  /* Extension 1001 is Arjun Mehta -- the logged-in demo account itself
+     (`DEMO_USER.uuid` above), not just another roster row. Without this,
+     the row's own uuid came out as `demo-user-1001` (this file's generic
+     per-extension pattern) while `useUser()` reports the real session's
+     `demo-user-0000-...-0001`, so `row.uuid === myUuid` was never true and
+     the People table's "set my presence" dropdown never appeared on your
+     own row -- it only ever compared against a different Arjun Mehta. */
+  uuid: extension === '1001' ? DEMO_USER.uuid : `demo-user-${extension}`,
+  first_name: first,
+  last_name: last,
+  name: `${first} ${last}`,
+  full_name: `${first} ${last}`,
+  email: `${first.toLowerCase()}.${last.toLowerCase()}@example.com`,
+  extension,
+  phone,
+  site: site ? { name: site } : null,
+  role,
+  role_name: roleName,
+  role_data: { name: roleName, slug: role },
+  status: 1,
+  is_active: true,
+  created_at: '2026-01-01T00:00:00.000Z',
+});
+
+/* The same roster the contact-centre data is built around, so an agent in the
+   user list is the agent Performance reports handled calls for. */
+const USER_SEED = DEMO_AGENTS.map((row) =>
+  buildUser(
+    row.first_name,
+    row.last_name,
+    row.role,
+    row.role_name,
+    row.extension,
+    row.phone,
+    row.site,
+  ),
+);
+
+type Store = {
+  users: any[];
+  roles: any[];
+  receptionists?: any[];
+  chatAgents?: any[];
+  departments?: any[];
+  sites?: any[];
+  templates?: any[];
+  callHandlingTemplates?: any[];
+  numbers?: any[];
+  contacts?: any[];
+  /* Video meetings and calendar events/tasks created in-session — see the
+     "Video meetings & calendar" block below `applyWrite`. One record can back
+     both a `/api/v1/meeting/listing` row and a `/api/calendar/event-task/list`
+     row at once (a scheduled meeting is both), which is why it carries fields
+     for each rather than living in two separate arrays that could disagree. */
+  meetings?: any[];
+};
+
+const readStore = (): Store => {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      /* The AI arrays (and, later, departments/sites) were added after the
+         first stores were written, so an existing browser holds a record
+         without them. Defaulting here rather than bumping STORE_KEY again
+         keeps whatever that browser already created. */
+      const parsed = JSON.parse(raw) as Store;
+      /* Rows added to a seed list later (more demo users, more demo
+         templates) need to reach a browser that already wrote a store
+         before that seed grew — a plain `??` only fires when the field is
+         missing entirely, not when it's present but shorter than the
+         current seed. Appending whichever seed rows aren't already present
+         (matched by uuid) shows the new rows without touching or
+         reordering anything already there, including any edits made to it. */
+      const mergeSeed = <T extends { uuid: string }>(existing: T[] | undefined, seed: T[]): T[] => {
+        const present = new Set((existing ?? []).map((row) => row.uuid));
+        return [...(existing ?? []), ...seed.filter((row) => !present.has(row.uuid))];
+      };
+      /* `site`/`forward_call_actions` were added to the department seed after
+         some browsers had already written a store, so those browsers'
+         departments carry neither -- opening one to edit showed Location,
+         Member Ring Timeout and "If no one answer" all blank forever, since
+         nothing here ever revisited a row already saved. Every stored
+         department, seeded or user-created, gets whichever of the two it is
+         missing filled in once: the matching seed row's for the four
+         original demo departments, and a generic one (Mumbai HQ, this
+         department's own saved manager as the no-answer forward) for
+         anything else, so the edit form is never handed a blank required
+         field a real save would already have filled in. */
+      const departmentSeedByUuid = new Map(demoDepartmentRows().map((row) => [row.uuid, row]));
+      const backfillDepartment = (row: any) => {
+        if (row?.site && row?.forward_call_actions) return row;
+        const seeded = departmentSeedByUuid.get(row?.uuid);
+        const manager = (() => {
+          try {
+            return typeof row?.manager === 'string' ? JSON.parse(row.manager) : row?.manager;
+          } catch {
+            return null;
+          }
+        })();
+        return {
+          ...row,
+          site: row?.site || seeded?.site || JSON.stringify({ label: 'Mumbai HQ', value: 'demo-site-mumbai' }),
+          forward_call_actions: row?.forward_call_actions ||
+            seeded?.forward_call_actions || {
+              call_handling: {
+                timeout: 10,
+                failover: manager?.uuid
+                  ? {
+                      type: 'EXTENSION',
+                      value: manager?.extension || '',
+                      label: manager?.name || '',
+                    }
+                  : { type: '', value: '', label: '' },
+              },
+              ring_strategy: 'ring_all',
+              operational_hours: {},
+              media: {},
+              recording: {},
+              display_number: {},
+              transcription: false,
+              ai_call_monitoring: false,
+            },
+        };
+      };
+      return {
+        ...parsed,
+        users: mergeSeed(parsed.users, USER_SEED),
+        receptionists: parsed.receptionists ?? [],
+        chatAgents: parsed.chatAgents ?? [],
+        departments: (parsed.departments ?? demoDepartmentRows()).map(backfillDepartment),
+        sites: parsed.sites ?? demoSiteRows(),
+        templates: mergeSeed(parsed.templates, demoTemplateRows()),
+        callHandlingTemplates: mergeSeed(
+          parsed.callHandlingTemplates,
+          demoCallHandlingTemplateRows(),
+        ),
+        numbers: mergeSeed(parsed.numbers, demoAssignedDidRows()),
+        /* Contacts key off `_id`, not `uuid` like the rows `mergeSeed` above
+           was written for, so a dedicated merge keeps a stored contact from
+           being duplicated against the seed on every read. */
+        contacts: (() => {
+          const present = new Set((parsed.contacts ?? []).map((row: any) => row._id));
+          return [
+            ...(parsed.contacts ?? []),
+            ...demoContactBookRows().filter((row) => !present.has(row._id)),
+          ];
+        })(),
+        meetings: parsed.meetings ?? [],
+      };
+    }
+  } catch {
+    /* Corrupt or unavailable storage falls back to the seed. */
+  }
+  return {
+    users: [...USER_SEED],
+    roles: [...ROLE_SEED],
+    receptionists: [],
+    chatAgents: [],
+    departments: demoDepartmentRows(),
+    sites: demoSiteRows(),
+    templates: demoTemplateRows(),
+    callHandlingTemplates: demoCallHandlingTemplateRows(),
+    numbers: demoAssignedDidRows(),
+    contacts: demoContactBookRows(),
+    meetings: [],
+  };
+};
+
+/** The Roles table's "People" column reads `user_count` off each role — the
+   seed never carried one, which is why it always showed 0. Computed here
+   instead of hardcoded so it stays right as users are added, edited or
+   reassigned rather than drifting from a number typed in once. */
+const withUserCounts = (roles: any[], users: any[]) => {
+  const bySlug = new Map<string, number>();
+  users.forEach((user: any) => {
+    const slug = String(user?.role || '').toUpperCase();
+    if (!slug) return;
+    bySlug.set(slug, (bySlug.get(slug) || 0) + 1);
+  });
+  return roles.map((role: any) => ({
+    ...role,
+    user_count: bySlug.get(String(role?.slug || '').toUpperCase()) || 0,
+  }));
+};
+
+const writeStore = (store: Store) => {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch {
+    /* A full or blocked store only costs persistence, not the screen. */
+  }
+};
+
+const newUuid = () =>
+  globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const asObject = (data: unknown): Record<string, any> => {
+  if (typeof data === 'string') {
+    try {
+      return JSON.parse(data) ?? {};
+    } catch {
+      return {};
+    }
+  }
+  return data && typeof data === 'object' ? (data as Record<string, any>) : {};
+};
+
+/* ---------------------------------------------------------------------------
+   Video meetings & calendar — one record backs both `/api/v1/meeting/*` and
+   `/api/calendar/event-task/*`, since a scheduled video meeting is both a
+   meeting and a calendar entry and the real app creates it as one action
+   (`ScheduleMeeting`'s submit calls `createMeeting`, then `createEventAndTask`
+   with the meetingId it got back). A plain calendar TASK never gets a
+   `meetingId` and only ever answers the calendar endpoints.
+--------------------------------------------------------------------------- */
+
+/** A short, Zoom-style room code — good enough to key a Jitsi room by, and
+ *  distinct from the seed's hyphenated `demo-meeting-N` ids. */
+const buildMeetingCode = () => {
+  const segment = (length: number) =>
+    Math.random().toString(36).replace(/[^a-z0-9]/g, '').padEnd(length, '0').slice(0, length);
+  return `${segment(3)}-${segment(4)}-${segment(3)}`;
+};
+
+/** `startTime` arrives as `YYYY-MM-DD HH:mm:ss` (space-separated, not
+ *  ISO) from both `ScheduleMeeting` and the dashboard's instant-meeting
+ *  payload — swapping in a `T` is enough to make `Date` parse it reliably
+ *  across browsers instead of relying on the non-standard space form. */
+const parseMeetingStart = (value: unknown): Date => {
+  if (!value) return new Date();
+  const date = new Date(typeof value === 'string' ? value.replace(' ', 'T') : (value as any));
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+const addMinutesIso = (date: Date, minutes: number) =>
+  new Date(date.getTime() + minutes * 60_000).toISOString();
+
+/** Normalises whatever member shape a form posted (`user_uuid` from the
+ *  member picker, `userId` from an edit reload) into one shape carrying both
+ *  keys, since different readers downstream reach for different ones. */
+const mapMeetingPeople = (members: any[] = []) =>
+  members.map((member) => {
+    const id = member?.user_uuid || member?.userId || '';
+    return {
+      user_uuid: id,
+      userId: id,
+      email: member?.email || '',
+      name: member?.name || '',
+      type: member?.type || 'MEMBER',
+      joinStatus: member?.joinStatus || 'NO',
+    };
+  });
+
+/** Shape for `/api/v1/meeting/listing` rows — what the video dashboard, the
+ *  dedicated Upcoming/Invited/Ongoing/Past pages and the video console's own
+ *  `meetings-adapter` all read. */
+const toMeetingListRow = (record: any) => ({
+  meetingId: record.meetingId,
+  name: record.name,
+  hostName: record.hostName,
+  createdById: record.createdById,
+  mode: 'scheduled',
+  timezone: record.timezone,
+  startTimeLocal: record.startTimeLocal,
+  endTimeLocal: record.endTimeLocal,
+  members: record.members,
+});
+
+/** Shape for `/api/calendar/event-task/list` rows — what the Calendar page's
+ *  `transformEventTaskToSchedule` reads. */
+const toCalendarRow = (record: any) => ({
+  _id: record._id,
+  uuid: record._id,
+  name: record.name,
+  category: record.category,
+  source: record.source,
+  status: record.status,
+  mode: record.mode,
+  referenceId: record.referenceId,
+  meetings: record.meetingId ? [{ meetingId: record.meetingId }] : [],
+  assignTo: record.assignTo,
+  timezone: record.timezone,
+  startTime: record.startTime,
+  endTime: record.endTime,
+  startTimeLocal: record.startTimeLocal,
+  endTimeLocal: record.endTimeLocal,
+  createdById: record.createdById,
+  createdAt: record.createdAt,
+});
+
+/** Shape for `GET /api/calendar/event-task/<id>` — the edit-prefill call
+ *  `ScheduleEventModal` makes, read as `result[0]`. */
+const toEventTaskDetail = (record: any) => ({
+  _id: record._id,
+  name: record.name,
+  startTime: record.startTime,
+  duration: record.duration,
+  timezone: record.timezone,
+  assignTo: record.assignTo,
+  meetingDetail: { allowHost: record.allowHost, password: record.password },
+  reminder: record.reminder,
+  description: record.description,
+  reminderMode: record.reminderMode,
+});
+
+/** Shape for `/api/v1/meeting/detail` — the edit-prefill call
+ *  `ScheduleMeeting` (the dashboard's own dialog) makes, read as
+ *  `result[0]`. */
+const toMeetingDetail = (record: any) => ({
+  _id: record._id,
+  name: record.name,
+  startUtc: record.startTime,
+  timezone: record.timezone,
+  allowHost: record.allowHost,
+  password: record.password,
+  duration: record.duration,
+  members: [{ user_detail: record.assignTo }],
+});
+
+/** Writes that the management screens make; returns null when none applies. */
+/**
+ * One row for an AI screen's table, from whatever its wizard posted.
+ *
+ * The list columns read `agentName`, `status`, `caller_id`, `sentiment` and
+ * `updatedAt`, so those are filled whether or not the payload carried them —
+ * a row missing them renders as a blank line rather than the thing just made.
+ * The rest of the payload is kept so reopening the record for edit finds its
+ * own answers again.
+ */
+const buildDemoAgentRecord = (body: Record<string, any>, kind: 'receptionist' | 'chat-agent') => {
+  const id = newUuid();
+  const now = new Date().toISOString();
+
+  return {
+    ...body,
+    _id: id,
+    uuid: id,
+    agentId: id,
+    agentName: body.agentName || body.name || body.agent_name || 'Untitled',
+    name: body.agentName || body.name || body.agent_name || 'Untitled',
+    /* The wizard posts `status: 'active'` on create; a draft posts nothing and
+       should not claim to be live. */
+    status: body.status || 'inactive',
+    agentStatus: body.status || 'inactive',
+    caller_id: body.caller_id ?? [],
+    sentiment: null,
+    type: kind,
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const applyWrite = (url: string, body: Record<string, any>) => {
+  const store = readStore();
+
+  /* Instant meeting, Schedule meeting, and the same dialog's edit path — all
+     three post here. An incoming `meetingId` means "update", matching how the
+     real endpoint distinguishes create from edit. */
+  if (url.includes('/api/v1/meeting/save')) {
+    const meetings = store.meetings ?? [];
+    const index = body.meetingId ? meetings.findIndex((row) => row.meetingId === body.meetingId) : -1;
+    const existing = index >= 0 ? meetings[index] : null;
+
+    const meetingId = existing?.meetingId || body.meetingId || buildMeetingCode();
+    const meetingType = body.meetingType || existing?.meetingType || 'SCHEDULED';
+    /* An instant meeting posts `duration: 0` — there is no real end time to
+       carry over, so it is given a generous open-ended window instead of
+       looking like it ended the instant it started. */
+    const duration =
+      Number(body.duration) || existing?.duration || (meetingType === 'INSTANT' ? 60 : 30);
+    const start = body.startTime ? parseMeetingStart(body.startTime) : new Date(existing?.startTime || Date.now());
+    const startIso = start.toISOString();
+    const endIso = addMinutesIso(start, duration);
+    const people = body.members ? mapMeetingPeople(body.members) : existing?.assignTo || [];
+
+    const record = {
+      ...existing,
+      _id: existing?._id || meetingId,
+      uuid: existing?._id || meetingId,
+      meetingId,
+      referenceId: meetingId,
+      name: body.name || existing?.name || '',
+      category: body.category || existing?.category || 'EVENT',
+      meetingType,
+      mode: body.mode || existing?.mode || 'VIDEO',
+      status: 'PENDING',
+      startTime: startIso,
+      endTime: endIso,
+      startTimeLocal: startIso,
+      endTimeLocal: endIso,
+      timezone: body.timezone || existing?.timezone || 'Asia/Kolkata',
+      allowHost: body.allowHost || existing?.allowHost || 'Y',
+      ...(body.password ? { password: body.password } : existing?.password ? { password: existing.password } : {}),
+      duration,
+      description: body.description ?? existing?.description ?? '',
+      reminder: body.reminder ?? existing?.reminder ?? false,
+      reminderMode: body.reminderMode ?? existing?.reminderMode ?? [],
+      source: body.source || existing?.source || 'CALENDAR',
+      createdById: existing?.createdById || DEMO_USER.uuid,
+      hostName: existing?.hostName || DEMO_USER.user_info.name,
+      assignTo: people,
+      members: people,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    };
+
+    store.meetings = index >= 0 ? meetings.map((row, i) => (i === index ? record : row)) : [...meetings, record];
+    writeStore(store);
+    return ok({ ...record, meetingId });
+  }
+
+  /* Follows a meeting's own save, carrying the same fields plus the
+     `meetingId`/`referenceId` it got back — or, for a plain calendar TASK
+     with no video meeting at all, the only save call that happens. */
+  if (url.includes('/api/calendar/event-task/save')) {
+    const meetings = store.meetings ?? [];
+    const meetingId = body.meetingId || body.referenceId;
+    const index = meetingId
+      ? meetings.findIndex((row) => row.meetingId === meetingId)
+      : body.eventTaskId
+        ? meetings.findIndex((row) => row._id === body.eventTaskId)
+        : -1;
+    const existing = index >= 0 ? meetings[index] : null;
+
+    const start = body.startTime ? parseMeetingStart(body.startTime) : new Date(existing?.startTime || Date.now());
+    const startIso = existing?.startTime || start.toISOString();
+    const endIso = existing?.endTime || addMinutesIso(start, 60);
+    const people = body.members ? mapMeetingPeople(body.members) : existing?.assignTo || [];
+    const id = existing?._id || meetingId || newUuid();
+
+    const record = {
+      ...existing,
+      _id: id,
+      uuid: id,
+      ...(meetingId && { meetingId, referenceId: meetingId }),
+      name: body.name || existing?.name || '',
+      category: String(body.category || existing?.category || 'TASK').toUpperCase(),
+      mode: body.mode || existing?.mode,
+      timezone: body.timezone || existing?.timezone || 'Asia/Kolkata',
+      startTime: startIso,
+      endTime: endIso,
+      startTimeLocal: startIso,
+      endTimeLocal: endIso,
+      description: body.description ?? existing?.description ?? '',
+      reminder: body.reminder ?? existing?.reminder ?? false,
+      reminderMode: body.reminderMode ?? existing?.reminderMode ?? [],
+      source: body.source || existing?.source || 'CALENDAR',
+      assignTo: people,
+      members: existing?.members || people,
+      status: existing?.status || 'PENDING',
+      createdById: existing?.createdById || DEMO_USER.uuid,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    };
+
+    store.meetings = index >= 0 ? meetings.map((row, i) => (i === index ? record : row)) : [...meetings, record];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/calendar/event-task/remove')) {
+    const meetings = store.meetings ?? [];
+    const target = meetings.find((row) => row._id === body.eventTaskId);
+    store.meetings = meetings.filter((row) => row._id !== body.eventTaskId);
+    writeStore(store);
+    return ok({ category: (target?.category || 'event').toLowerCase() });
+  }
+
+  if (url.includes('/api/calendar/event-task/update-status')) {
+    store.meetings = (store.meetings ?? []).map((row) =>
+      row._id === body.eventTaskId ? { ...row, status: body.status } : row,
+    );
+    writeStore(store);
+    return ok({ updated: true });
+  }
+
+  if (url.includes('/api/calendar/event-task/assign-members')) {
+    const people = mapMeetingPeople(body.members || []);
+    store.meetings = (store.meetings ?? []).map((row) =>
+      row._id === body.eventTaskId ? { ...row, assignTo: people, members: people } : row,
+    );
+    writeStore(store);
+    return ok({ updated: true });
+  }
+
+  /* Adds invitees to a meeting that already exists — merged in rather than
+     replacing, so invitees added earlier (or the host) are not dropped. */
+  if (url.includes('/api/v1/meeting/send-invite')) {
+    const meetings = store.meetings ?? [];
+    const index = meetings.findIndex((row) => row.meetingId === body.meetingId);
+    if (index >= 0) {
+      const existingKeys = new Set(
+        (meetings[index].members || []).map((member: any) => member.user_uuid || member.email),
+      );
+      const incoming = mapMeetingPeople(body.members || []).filter(
+        (member) => !existingKeys.has(member.user_uuid || member.email),
+      );
+      const merged = [...(meetings[index].members || []), ...incoming];
+      store.meetings = meetings.map((row, i) =>
+        i === index ? { ...row, members: merged, assignTo: merged } : row,
+      );
+      writeStore(store);
+    }
+    return ok({ sent: true });
+  }
+
+  /* The AI builders create through these. Without somewhere to put the record
+     the wizard reported success and the list it returned to stayed empty, so
+     a receptionist could be created over and over and never appear. */
+  if (url.includes('/api/ai/receptionist/create') || url.includes('/api/ai/receptionist/draft/create')) {
+    const created = buildDemoAgentRecord(body, 'receptionist');
+    store.receptionists = [created, ...(store.receptionists ?? [])];
+    writeStore(store);
+    return ok(created);
+  }
+  if (url.includes('/api/ai/chat-agent/create') || url.includes('/api/ai/chat-agent/draft/create')) {
+    const created = buildDemoAgentRecord(body, 'chat-agent');
+    store.chatAgents = [created, ...(store.chatAgents ?? [])];
+    writeStore(store);
+    return ok(created);
+  }
+  if (url.includes('/api/ai/receptionist/update') || url.includes('/api/ai/chat-agent/update')) {
+    const isReceptionist = url.includes('/receptionist/');
+    const list = (isReceptionist ? store.receptionists : store.chatAgents) ?? [];
+    const targetId = String(body.agentId || body._id || body.uuid || '');
+    const next = list.map((row: any) =>
+      String(row._id) === targetId || String(row.agentId) === targetId
+        ? { ...row, ...body, updatedAt: new Date().toISOString() }
+        : row,
+    );
+    if (isReceptionist) store.receptionists = next;
+    else store.chatAgents = next;
+    writeStore(store);
+    return ok(next.find((row: any) => String(row._id) === targetId) ?? null);
+  }
+  if (url.includes('/api/ai/receptionist/delete') || url.includes('/api/ai/chat-agent/delete')) {
+    const isReceptionist = url.includes('/receptionist/');
+    const list = (isReceptionist ? store.receptionists : store.chatAgents) ?? [];
+    const targetId = String(body.agentId || body._id || body.uuid || body.id || '');
+    const next = list.filter(
+      (row: any) => String(row._id) !== targetId && String(row.agentId) !== targetId,
+    );
+    if (isReceptionist) store.receptionists = next;
+    else store.chatAgents = next;
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  if (url.includes('/api/user/add-member')) {
+    const created = {
+      ...buildUser(
+        body.first_name || 'New',
+        body.last_name || 'Member',
+        body.role || 'AGENT',
+        body.role_name || body.role || 'Agent',
+        String(body.extension || 1000 + store.users.length + 1),
+      ),
+      ...body,
+      uuid: newUuid(),
+    };
+    store.users = [...store.users, created];
+    writeStore(store);
+    return ok(created);
+  }
+
+  if (url.includes('/api/user/update') || url.includes('/api/user/assign-role-bulk-users')) {
+    const targets = new Set<string>(
+      [body.uuid, body.user_uuid, ...(Array.isArray(body.user_uuids) ? body.user_uuids : [])].filter(
+        Boolean,
+      ),
+    );
+    store.users = store.users.map((user) =>
+      targets.has(user.uuid) ? { ...user, ...body, uuid: user.uuid } : user,
+    );
+    writeStore(store);
+    return ok(listPayload(store.users, {}, body));
+  }
+
+  if (url.includes('/api/user/delete')) {
+    const target = body.uuid || body.user_uuid;
+    store.users = store.users.filter((user) => user.uuid !== target);
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  if (url.includes('/api/user/role/custom/upsert')) {
+    const existing = store.roles.find((role) => role.uuid && role.uuid === body.uuid);
+    if (existing) {
+      store.roles = store.roles.map((role) =>
+        role.uuid === body.uuid ? { ...role, ...body } : role,
+      );
+      writeStore(store);
+      return ok(existing);
+    }
+    const created = { ...body, uuid: newUuid(), is_custom: true, name: body.name || 'Custom Role' };
+    store.roles = [...store.roles, created];
+    writeStore(store);
+    return ok(created);
+  }
+
+  if (url.includes('/api/user/role/custom/remove')) {
+    const target = url.split('/').filter(Boolean).pop();
+    store.roles = store.roles.filter((role) => role.uuid !== target && role.uuid !== body.uuid);
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* `createDeparment` puts an edit's uuid on the URL (`.../upsert/<uuid>`)
+     rather than the body, so a create is whatever's left after that path
+     segment is stripped off — no uuid there at all. */
+  if (url.includes('/api/tenant/department/upsert')) {
+    const departments = store.departments ?? [];
+    const urlUuid = url.split('/api/tenant/department/upsert/')[1]?.split(/[/?]/)[0];
+    const existing = urlUuid && departments.find((dept) => dept.uuid === urlUuid);
+    const record = existing
+      ? { ...existing, ...body, uuid: existing.uuid }
+      : { ...body, uuid: newUuid() };
+    store.departments = existing
+      ? departments.map((dept) => (dept.uuid === existing.uuid ? record : dept))
+      : [...departments, record];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/tenant/department/delete')) {
+    const target = body.uuid || url.split('/').filter(Boolean).pop();
+    store.departments = (store.departments ?? []).filter((dept) => dept.uuid !== target);
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* `upsertSite` puts an edit's uuid on the URL (`.../upsert/<uuid>`), same
+     as department upsert above. */
+  if (url.includes('/api/site/upsert')) {
+    const sites = store.sites ?? [];
+    const urlUuid = url.split('/api/site/upsert/')[1]?.split(/[/?]/)[0];
+    const existing = urlUuid && sites.find((site) => site.uuid === urlUuid);
+    const record = existing
+      ? { ...existing, ...body, uuid: existing.uuid }
+      : { ...body, uuid: newUuid() };
+    store.sites = existing
+      ? sites.map((site) => (site.uuid === existing.uuid ? record : site))
+      : [...sites, record];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/site/delete')) {
+    const target = body.uuid || body.id || url.split('/').filter(Boolean).pop();
+    store.sites = (store.sites ?? []).filter((site) => site.uuid !== target);
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* Directory ▸ External Contacts' Add/Edit Contact form posts here for both
+     — `contact_uuid` on the body marks an edit, matching how
+     create-new-contact.tsx sets it from the row being edited (`_id`).
+     Without a case here `/api/contact/list` below could never show what was
+     submitted: it used to call `demoContactBookRows()` straight, which
+     regenerates the same static seed on every read, so adding a contact
+     showed a success toast and then the new row just never appeared. */
+  if (url.includes('/api/contact/upsert')) {
+    const contacts = store.contacts ?? demoContactBookRows();
+    const existing = body.contact_uuid && contacts.find((row) => row._id === body.contact_uuid);
+    const now = new Date().toISOString();
+    const id = existing?._id ?? newUuid();
+    const record = existing
+      ? {
+          ...existing,
+          ...body,
+          _id: id,
+          uuid: existing.uuid ?? id,
+          name: { ...existing.name, ...body.name },
+          contact: { ...existing.contact, ...body.contact },
+          updatedAt: now,
+        }
+      : {
+          ...body,
+          _id: id,
+          uuid: id,
+          name: { first: body?.name?.first || '', last: body?.name?.last || '' },
+          contact: { email: body?.contact?.email || '', phone: body?.contact?.phone || '' },
+          company: body?.profile?.company || '',
+          groupMeta: [],
+          is_vip: false,
+          is_dnc: false,
+          is_blocked: false,
+          tag: 'STANDARD',
+          createdAt: now,
+          updatedAt: now,
+        };
+    store.contacts = existing
+      ? contacts.map((row) => (row._id === id ? record : row))
+      : [record, ...contacts];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/contact/delete')) {
+    const ids: string[] = Array.isArray(body.contact_uuid)
+      ? body.contact_uuid
+      : [body.contact_uuid].filter(Boolean);
+    store.contacts = (store.contacts ?? demoContactBookRows()).filter(
+      (row) => !ids.includes(row._id),
+    );
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* `upsertTemplate` puts an edit's uuid on the URL (`.../upsert/<uuid>`),
+     same shape as department/site upsert above — Duplicate and Create both
+     post here with no uuid, so both fall into the "new record" branch. */
+  if (url.includes('/api/tenant/user/template/upsert')) {
+    const templates = store.templates ?? [];
+    const urlUuid = url.split('/api/tenant/user/template/upsert/')[1]?.split(/[/?]/)[0];
+    const existing = urlUuid && templates.find((template) => template.uuid === urlUuid);
+    const now = new Date().toISOString();
+    const record = existing
+      ? { ...existing, ...body, uuid: existing.uuid, updated_at: now }
+      : { ...body, uuid: newUuid(), created_at: now, updated_at: now };
+    store.templates = existing
+      ? templates.map((template) => (template.uuid === existing.uuid ? record : template))
+      : [...templates, record];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/tenant/user/template/delete')) {
+    const target = body.uuid || url.split('/').filter(Boolean).pop();
+    store.templates = (store.templates ?? []).filter((template) => template.uuid !== target);
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* Same upsert/delete shape as the User Settings template pair above —
+     `upsertCallHandlingTemplate` puts an edit's uuid on the URL the same way. */
+  if (url.includes('/api/tenant/call-handling/template/upsert')) {
+    const callHandlingTemplates = store.callHandlingTemplates ?? [];
+    const urlUuid = url
+      .split('/api/tenant/call-handling/template/upsert/')[1]
+      ?.split(/[/?]/)[0];
+    const existing = urlUuid && callHandlingTemplates.find((template) => template.uuid === urlUuid);
+    const now = new Date().toISOString();
+    const record = existing
+      ? { ...existing, ...body, uuid: existing.uuid, updated_at: now }
+      : { ...body, uuid: newUuid(), created_at: now, updated_at: now };
+    store.callHandlingTemplates = existing
+      ? callHandlingTemplates.map((template) => (template.uuid === existing.uuid ? record : template))
+      : [...callHandlingTemplates, record];
+    writeStore(store);
+    return ok(record);
+  }
+
+  if (url.includes('/api/tenant/call-handling/template/delete')) {
+    const target = body.uuid || url.split('/').filter(Boolean).pop();
+    store.callHandlingTemplates = (store.callHandlingTemplates ?? []).filter(
+      (template) => template.uuid !== target,
+    );
+    writeStore(store);
+    return ok({ deleted: true });
+  }
+
+  /* A single number's forwarding save — both the ordinary "edit this number"
+     drawer and the bulk Apply-to-Numbers screen land here, one number per
+     call. Merge, never replace: a number's forward_call_actions is also
+     written by AI-receptionist assignment, so overwriting the whole field
+     would silently drop whichever routing that number already had — the
+     exact bug the real endpoint's own merge already guards against (see
+     set-number-forwarding/index.tsx's handleCallForwarding). */
+  if (url.includes('/api/did/call-forwarding')) {
+    const numbers = store.numbers ?? [];
+    const target = numbers.find((number) => number.uuid === body.uuid);
+    if (!target) return ok({ updated: false });
+    const merged = { ...asObject(target.forward_call_actions), ...asObject(body.forward_call_actions) };
+    const record = { ...target, forward_call_actions: JSON.stringify(merged) };
+    store.numbers = numbers.map((number) => (number.uuid === target.uuid ? record : number));
+    writeStore(store);
+    return ok(record);
+  }
+
+  return null;
+};
+
+/* ---------------------------------------------------------------------------
+   Phone console — its own dedicated calls/voicemails, distinct from the
+   shared contact-centre log `demoCalls()` answers for Reports/Performance/
+   Home. Scoped to just this page (see the `limit === 50` check below) rather
+   than swapping demoCalls() itself, which stays untouched for everyone else.
+--------------------------------------------------------------------------- */
+const phoneDemoMinutesAgo = (n: number) => new Date(Date.now() - n * 60_000).toISOString();
+
+const PHONE_CALL_SEED = [
+  {
+    uuid: 'demo-call-1',
+    direction: 'Inbound',
+    caller_id_number: '+14155550142',
+    caller_id_name: 'Sam Sub',
+    destination_number: '1002',
+    start_stamp: phoneDemoMinutesAgo(18),
+    billsec: 264,
+    disposition: 'Billing',
+    hangup_cause: 'NORMAL_CLEARING',
+  },
+  {
+    /* Same number as demo-call-1 — gives the History pane (which queries
+       /api/tenant/report/call-list filtered by phone) a real second entry
+       to show instead of "No previous calls logged for this number." */
+    uuid: 'demo-call-1b',
+    direction: 'Inbound',
+    caller_id_number: '+14155550142',
+    caller_id_name: 'Sam Sub',
+    destination_number: '1002',
+    start_stamp: phoneDemoMinutesAgo(60 * 24 * 9),
+    billsec: 187,
+    disposition: 'Billing',
+    hangup_cause: 'NORMAL_CLEARING',
+  },
+  {
+    uuid: 'demo-call-2',
+    direction: 'Outbound',
+    caller_id_number: '1001',
+    caller_id_name: 'Demo User',
+    destination_number: '+442071838750',
+    start_stamp: phoneDemoMinutesAgo(55),
+    billsec: 96,
+    disposition: 'Support',
+    hangup_cause: 'NORMAL_CLEARING',
+    record_file: 'demo-recording-2.mp3',
+  },
+  {
+    uuid: 'demo-call-3',
+    direction: 'Inbound',
+    caller_id_number: '+919812345678',
+    caller_id_name: 'Priya Nair',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(140),
+    billsec: 0,
+    disposition: 'Sales',
+    hangup_cause: 'NO_ANSWER',
+  },
+  {
+    uuid: 'demo-call-4',
+    direction: 'Inbound',
+    caller_id_number: '+13105550118',
+    caller_id_name: 'Mia Manager',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(320),
+    billsec: 512,
+    disposition: 'Account Review',
+    hangup_cause: 'NORMAL_CLEARING',
+    record_file: 'demo-recording-4.mp3',
+  },
+  {
+    uuid: 'demo-call-5',
+    direction: 'Outbound',
+    caller_id_number: '1001',
+    caller_id_name: 'Alex Agent',
+    destination_number: '1004',
+    start_stamp: phoneDemoMinutesAgo(1400),
+    billsec: 183,
+    disposition: 'Internal',
+    hangup_cause: 'NORMAL_CLEARING',
+  },
+  {
+    uuid: 'demo-call-6',
+    direction: 'Inbound',
+    caller_id_number: '+16465550199',
+    caller_id_name: 'Tom Walsh',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(2600),
+    billsec: 0,
+    disposition: 'Technical',
+    hangup_cause: 'NO_ANSWER',
+  },
+  {
+    /* A voicemail greeting plays before the caller hangs up, so the switch
+       still captures a short recording even though the call itself counts
+       as missed — gives the Recordings tab's "Missed" filter a real row
+       instead of always reading empty. */
+    uuid: 'demo-call-7',
+    direction: 'Inbound',
+    caller_id_number: '+917042581369',
+    caller_id_name: 'Rohit Kapoor',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(95),
+    billsec: 6,
+    disposition: 'Billing',
+    hangup_cause: 'NO_ANSWER',
+    record_file: 'demo-recording-7.mp3',
+  },
+];
+
+const PHONE_VOICEMAIL_SEED = [
+  {
+    uuid: 'demo-voicemail-1',
+    direction: 'Inbound',
+    caller_id_number: '+919812345678',
+    caller_id_name: 'Priya Nair',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(142),
+    billsec: 34,
+    disposition: 'Voicemail — Sales enquiry',
+    hangup_cause: 'NO_ANSWER',
+    record_file: 'demo-voicemail-1.mp3',
+  },
+  {
+    uuid: 'demo-voicemail-2',
+    direction: 'Inbound',
+    caller_id_number: '+16465550199',
+    caller_id_name: 'Tom Walsh',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(2604),
+    billsec: 51,
+    disposition: 'Voicemail — Follow-up requested',
+    hangup_cause: 'NO_ANSWER',
+    record_file: 'demo-voicemail-2.mp3',
+  },
+  {
+    uuid: 'demo-voicemail-3',
+    direction: 'Inbound',
+    caller_id_number: '+442071838750',
+    caller_id_name: 'Unknown',
+    destination_number: '1001',
+    start_stamp: phoneDemoMinutesAgo(4100),
+    billsec: 21,
+    disposition: 'Voicemail',
+    hangup_cause: 'NO_ANSWER',
+    record_file: 'demo-voicemail-3.mp3',
+  },
+];
+
+/** Endpoint-specific answers; everything else gets an empty list. */
+/**
+ * The organisation record the app asks for before it renders anything.
+ *
+ * Demo mode answers it locally rather than letting it reach the network, so a
+ * demo build needs no backend at all. Deliberately carries no colours or logo
+ * paths: the provider writes any it finds onto CSS variables, and pointing at
+ * asset URLs that cannot be fetched offline would strip the theme the app
+ * ships with. The Stripe key is a publishable test key — publishable keys are
+ * safe in client code by design, and this one belongs to Stripe's own docs.
+ */
+const DEMO_ORGANISATION = {
+  uuid: 'demo-org-0000-0000-0000-000000000001',
+  fav_title: 'Demo Console',
+  source_name: 'Demo Console',
+  organisation_name: 'Demo Console',
+  domain: 'demo.local',
+  sub_domain: 'demo.local',
+  status: 1,
+  stripe_publish_key: 'pk_test_TYooMQauvdEDq54NiTphI7jx',
+  address: '1 Demo Street',
+  invoice_email: 'billing@example.com',
+};
+
+const matchDemoPayload = (url: string, data: unknown) => {
+  /* Answered here so demo mode never needs a backend; without it the provider
+     waits on a request that cannot succeed and the app sits on its spinner. */
+  if (url.includes('/api/admin/organisation/get-meta-data')) return ok(DEMO_ORGANISATION);
+
+  if (url.includes('/api/user/info')) return ok(DEMO_USER);
+
+  if (url.includes('/api/login') || url.includes('/api/verify-otp')) {
+    return ok({ ...DEMO_USER, auth: DEMO_USER, token: DEMO_SESSION_TOKEN });
+  }
+
+  if (url.includes('/api/send-otp')) return ok({ sent: true });
+
+  /* Invite people ▸ Order Summary. No demo handler existed for this route at
+     all, so every request fell through to the generic `listPayload()` at the
+     bottom of this function -- an empty list, not the {plan_cost, tax_amount,
+     ...} shape the summary card reads. That's why every amount showed ₹0
+     regardless of how many licenses were being added, independent of the
+     (also real) stale React Query cache key bug fixed in order-summary.tsx. */
+  if (url.includes('/api/plan/calculate-tax')) {
+    const licenses = Math.max(1, Number(asObject(data)?.licenses) || 1);
+    const perLicenseCost = 499;
+    const subTotal = perLicenseCost * licenses;
+    const taxPercentage = 18;
+    const taxAmount = Math.round((subTotal * taxPercentage) / 100);
+    return ok({
+      plan_cost: perLicenseCost,
+      per_license_cost: perLicenseCost,
+      sub_total: subTotal,
+      tax_percentage: taxPercentage,
+      tax_amount: taxAmount,
+      total_amount: subTotal + taxAmount,
+      tax_calculation_id: 'demo-tax-calc',
+    });
+  }
+
+  const written = applyWrite(url, asObject(data));
+  if (written) return written;
+
+  /* The contact centre the Performance views read. Empty lists would leave
+     Queues, Agents, Calls, Flows and Boards as five empty states. */
+  if (url.includes('/api/tenant/report/call-list')) {
+    const dateRange = asObject(data)?.filter_date as { from?: string; to?: string } | undefined;
+    const filterList = (asObject(data)?.filter || []) as Array<{ key?: string; value?: unknown }>;
+    const findFilter = (key: string) => filterList.find((row) => row?.key === key)?.value;
+
+    /* The phone console's History pane (history-pane.tsx) sends the exact
+       same `filter: [{key:'phone', ...}]` shape Call History's own
+       "Contact Phone Number" field does, with one difference: it never
+       sends a `filter_date` (it wants a phone's whole history, not one
+       day's report). That's the only reliable way to tell the two callers
+       apart — keying on `phone` alone routed Call History's own phone
+       filter into this console-only branch too, replacing its ranged rows
+       outright instead of narrowing them. History pane still gets its
+       richer PHONE_CALL_SEED; Call History's phone filter falls through to
+       the normal ranged path below instead. */
+    const phoneFilterValue = findFilter('phone');
+    if (phoneFilterValue && !dateRange) {
+      const digitsOnly = (value: unknown) => String(value || '').replace(/\D/g, '');
+      const target = digitsOnly(phoneFilterValue);
+      const rows = PHONE_CALL_SEED.filter(
+        (row) =>
+          digitsOnly(row.caller_id_number) === target || digitsOnly(row.destination_number) === target,
+      );
+      return ok(listPayload(rows, {}, data));
+    }
+
+    // Callbacks ▸ "Queue voicemail" calls this same endpoint with
+    // `type: 'voicemail'` — a distinct, smaller set of rows, not the whole
+    // day's call log filtered down.
+    if (asObject(data)?.type === 'voicemail') {
+      let voicemailRows = filterCallsByDateRange(demoVoicemailRows(), dateRange);
+      const voicemailSearch = String(asObject(data)?.search || '')
+        .trim()
+        .toLowerCase();
+      if (voicemailSearch) {
+        voicemailRows = voicemailRows.filter((row) =>
+          [row.caller_id_number, row.display_caller_number, row.contact_name, row.status]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(voicemailSearch)),
+        );
+      }
+      return ok(listPayload(voicemailRows, {}, data));
+    }
+    let rangedCalls = filterCallsByDateRange(demoCalls(), dateRange);
+    // Reports ▸ Outbound sends `filter: [{key:'direction', value:'Outbound'}, ...]` —
+    // without honoring it the page would list inbound calls under "Outbound".
+    // Call History's own Call Type filter also offers "Missed", which isn't a
+    // `direction` value at all (a missed call is an Inbound row that never
+    // got answered) — matched the same way the summary cards above count it.
+    const directionFilter = findFilter('direction');
+    if (directionFilter === 'Missed') {
+      rangedCalls = rangedCalls.filter(
+        (row) => row.direction === 'Inbound' && Number(row.billsectotal) === 0,
+      );
+    } else if (directionFilter) {
+      rangedCalls = rangedCalls.filter((row) => row.direction === directionFilter);
+    }
+    // Contact Name / Contact Phone Number — Call History's own advanced
+    // filter panel, distinct from the phone-console lookup above (that one
+    // only ever sends `phone`, never alongside a `filter_date`).
+    const contactNameFilter = String(findFilter('contact_name') || '')
+      .trim()
+      .toLowerCase();
+    if (contactNameFilter) {
+      rangedCalls = rangedCalls.filter((row) =>
+        [row.contact_name, row.from_display_name, row.to_display_name]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(contactNameFilter)),
+      );
+    }
+    const phoneFilterDigits = String(findFilter('phone') || '').replace(/\D/g, '');
+    if (phoneFilterDigits) {
+      const digitsOnly = (value: unknown) => String(value || '').replace(/\D/g, '');
+      rangedCalls = rangedCalls.filter(
+        (row) =>
+          digitsOnly(row.caller_id_number).includes(phoneFilterDigits) ||
+          digitsOnly(row.destination_number).includes(phoneFilterDigits) ||
+          digitsOnly(row.display_caller_number).includes(phoneFilterDigits),
+      );
+    }
+    /* Status — the filter's "Answered" option sends `SUCCESS` (the real
+       backend's status enum), but the demo rows only ever carry `ANSWERED`
+       or `NO ANSWER` (buildCalls, above); without this mapping the single
+       most commonly picked status option matched nothing. Every other
+       option (CANCEL, VOICEMAIL, ...) has no demo rows to match either way
+       — a real limitation of the seed data, not this filter. */
+    const statusFilter = findFilter('status');
+    if (statusFilter) {
+      const targetStatus = statusFilter === 'SUCCESS' ? 'ANSWERED' : statusFilter;
+      rangedCalls = rangedCalls.filter((row) => row.status === targetStatus);
+    }
+    /* Every call-list-backed report (Call History, Inbound, Outbound, ...)
+       shares this one search box, sending `search` on every keystroke —
+       matched here the same way `/api/contact/list`'s does above, against
+       every field the table actually shows a person could type ("bill" for
+       the Billing queue, a number, an agent name), so the box narrows the
+       list instead of doing nothing. */
+    const search = String(asObject(data)?.search || '')
+      .trim()
+      .toLowerCase();
+    if (search) {
+      rangedCalls = rangedCalls.filter((row) =>
+        [
+          row.caller_id_number,
+          row.destination_number,
+          row.display_caller_number,
+          row.via_did,
+          row.contact_name,
+          row.from_display_name,
+          row.to_display_name,
+          row.forward_name,
+          row.status,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search)),
+      );
+    }
+    return ok(listPayload(rangedCalls, { call_stats: demoCallStats(rangedCalls) }, data));
+  }
+  /* Reports ▸ Analytics ▸ Call Volume — a 7-day × 24-hour heatmap
+     (call-volumn/index.tsx reads `result.headers.days` for the column
+     labels and `result.rows[].{time, [dayLabel]}` for each cell). Had no
+     handler at all before this, so every cell rendered "-" and the whole
+     grid looked broken rather than merely unstyled. Deterministic
+     (mulberry32, not Math.random) for the same reason buildCalls() is —
+     a refetch shouldn't reshuffle every cell's shade. */
+  if (url.includes('/api/tenant/report/call-volume')) {
+    // Anchored on the date picker's own end date (Filters, call-volumn/
+    // index.tsx sends `filter_date: {from, to}` same as every other
+    // call-list report) rather than always "today" — otherwise the picker
+    // would relabel the columns without changing anything they show,
+    // which reads as broken rather than merely simple. The seed is
+    // derived from the anchor too, so picking a different range actually
+    // shows a different (still deterministic-per-pick) pattern instead of
+    // the same shape sliding under new labels.
+    const anchorRaw = (asObject(data)?.filter_date as { to?: string } | undefined)?.to;
+    const anchor = anchorRaw ? new Date(`${anchorRaw}T00:00:00`) : new Date();
+    const today = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
+    const random = mulberry32(20260901 + Math.floor(today.getTime() / 86400000));
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(date.getDate() - (6 - index));
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+      const mmdd = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+      // Bare "MM/DD", not "(MM/DD)" — the caller (call-volumn/index.tsx)
+      // wraps this half of the split label in its own parens already;
+      // adding a second pair here rendered as "((09/02))".
+      return `${dayName} ${mmdd}`;
+    });
+    const rows = Array.from({ length: 24 }, (_, hour) => {
+      const row: Record<string, string> = { time: `${String(hour).padStart(2, '0')}:00` };
+      // Business hours (9am-7pm) run busy; outside that, calls are sparse
+      // or nonexistent — the same shape a real contact centre's volume
+      // heatmap has, rather than uniform noise across all 24 hours.
+      const isBusinessHour = hour >= 9 && hour < 19;
+      days.forEach((day) => {
+        const isWeekend = day.startsWith('Saturday') || day.startsWith('Sunday');
+        const activityChance = isWeekend ? 0.15 : isBusinessHour ? 0.9 : 0.2;
+        if (random() > activityChance) {
+          row[day] = '-';
+          return;
+        }
+        const minutes = Math.floor(random() * (isBusinessHour ? 45 : 12));
+        const seconds = Math.floor(random() * 60);
+        row[day] = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+      });
+      return row;
+    });
+    return ok({ headers: { days }, rows });
+  }
+  /* Reports ▸ Analytics ▸ Call Analytics — the service-level dial, the four
+     summary tiles and the Incoming/Outgoing/Missed line chart
+     (analytics/index.tsx reads `result.summary.{serviceLevel, incomingACD,
+     outgoingACD, avgProcessingTime}` and `result.chartData[].{name,
+     Incoming, Outgoing, Missed}`). Had no handler at all before this, so
+     every tile read 0 and the chart drew nothing.
+
+     Derived from the same `demoCalls()` log every other report reads
+     rather than invented separately — the point of this screen is to
+     summarise those calls, so a Call History showing 133 answered calls
+     and an Analytics dial disagreeing about them would be worse than no
+     data at all. The page sends its own coarse `type` (day/week/month/
+     custom) rather than a date range, so that's resolved back into one
+     here before filtering. */
+  if (url.includes('/api/tenant/report/call-analytics')) {
+    const params = asObject(data);
+    const type = String(params?.type || 'week');
+    const toIso = (date: Date) => date.toISOString().slice(0, 10);
+    const shiftDays = (days: number) => {
+      const date = new Date();
+      date.setDate(date.getDate() - days);
+      return date;
+    };
+
+    let range: { from: string; to: string };
+    let bucket: 'hour' | 'day';
+    if (type === 'day') {
+      const day = String(params?.date || toIso(new Date()));
+      range = { from: day, to: day };
+      bucket = 'hour';
+    } else if (type === 'month') {
+      range = { from: toIso(shiftDays(29)), to: toIso(new Date()) };
+      bucket = 'day';
+    } else if (type === 'custom') {
+      range = {
+        from: String(params?.from || toIso(shiftDays(6))),
+        to: String(params?.to || toIso(new Date())),
+      };
+      bucket = range.from === range.to ? 'hour' : 'day';
+    } else {
+      range = { from: toIso(shiftDays(6)), to: toIso(new Date()) };
+      bucket = 'day';
+    }
+
+    const rangedCalls = filterCallsByDateRange(demoCalls(), range);
+    const isMissedCall = (row: any) =>
+      row.direction === 'Inbound' && Number(row.billsectotal) === 0;
+
+    /* "4 min 12 s" / "2 hr 12 min 55 s" — matching the format of the
+       hardcoded "Max:" chips these tiles already sit beside, so the
+       measured value and the ceiling next to it read as one pair rather
+       than two different notations. */
+    const formatDuration = (seconds: number) => {
+      const whole = Math.max(0, Math.round(seconds));
+      const hours = Math.floor(whole / 3600);
+      const minutes = Math.floor((whole % 3600) / 60);
+      const rest = whole % 60;
+      return [hours ? `${hours} hr` : '', minutes ? `${minutes} min` : '', `${rest} s`]
+        .filter(Boolean)
+        .join(' ');
+    };
+    const averageTalk = (rows: any[]) =>
+      rows.length ? rows.reduce((sum, row) => sum + (Number(row.billsectotal) || 0), 0) / rows.length : 0;
+    const maxTalk = (rows: any[]) =>
+      rows.reduce((max, row) => Math.max(max, Number(row.billsectotal) || 0), 0);
+    /* Wait = the part of a call before it was answered, the same
+       `duration - billsec` split every call-log report's own "Wait Time"
+       column uses, so this tile agrees with them. */
+    const waitSeconds = (row: any) =>
+      Math.max(0, (Number(row.duration) || 0) - (Number(row.billsectotal) || 0));
+    const averageWait = (rows: any[]) =>
+      rows.length ? rows.reduce((sum, row) => sum + waitSeconds(row), 0) / rows.length : 0;
+    const maxWait = (rows: any[]) => rows.reduce((max, row) => Math.max(max, waitSeconds(row)), 0);
+
+    const inbound = rangedCalls.filter((row) => row.direction === 'Inbound');
+    const outbound = rangedCalls.filter((row) => row.direction === 'Outbound');
+    const answeredInbound = inbound.filter((row) => !isMissedCall(row));
+    const serviceLevel = inbound.length
+      ? Math.round((answeredInbound.length / inbound.length) * 100)
+      : 0;
+
+    const buckets = new Map<string, { name: string; Incoming: number; Outgoing: number; Missed: number }>();
+    if (bucket === 'hour') {
+      for (let hour = 0; hour < 24; hour += 1) {
+        const suffix = hour < 12 ? 'AM' : 'PM';
+        const display = hour % 12 === 0 ? 12 : hour % 12;
+        buckets.set(String(hour), { name: `${display} ${suffix}`, Incoming: 0, Outgoing: 0, Missed: 0 });
+      }
+    } else {
+      const cursor = new Date(`${range.from}T00:00:00`);
+      const end = new Date(`${range.to}T00:00:00`);
+      while (cursor <= end) {
+        const key = toIso(cursor);
+        const name = `${String(cursor.getMonth() + 1).padStart(2, '0')}/${String(cursor.getDate()).padStart(2, '0')}`;
+        buckets.set(key, { name, Incoming: 0, Outgoing: 0, Missed: 0 });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    rangedCalls.forEach((row) => {
+      const started = new Date(row.start_stamp);
+      const key = bucket === 'hour' ? String(started.getHours()) : toIso(started);
+      const slot = buckets.get(key);
+      if (!slot) return;
+      if (isMissedCall(row)) slot.Missed += 1;
+      else if (row.direction === 'Outbound') slot.Outgoing += 1;
+      else slot.Incoming += 1;
+    });
+
+    return ok({
+      summary: {
+        serviceLevel,
+        incomingACD: formatDuration(averageTalk(answeredInbound)),
+        outgoingACD: formatDuration(averageTalk(outbound)),
+        waitTime: formatDuration(averageWait(rangedCalls)),
+        avgProcessingTime: formatDuration(averageTalk(rangedCalls)),
+        /* The "Max:" chip beside each tile was hardcoded prose ("2 hr 12
+           min 55 s") that never moved with the data — the real ceiling
+           for the same range is what makes the average beside it mean
+           anything. */
+        maxIncomingACD: formatDuration(maxTalk(answeredInbound)),
+        maxOutgoingACD: formatDuration(maxTalk(outbound)),
+        maxWaitTime: formatDuration(maxWait(rangedCalls)),
+        maxProcessingTime: formatDuration(maxTalk(rangedCalls)),
+        totalCalls: rangedCalls.length,
+      },
+      chartData: [...buckets.values()],
+    });
+  }
+  if (url.includes('/api/tenant/report/agents')) {
+    const dateRange = asObject(data)?.filter_date as { from?: string; to?: string } | undefined;
+    const rangedCalls = filterCallsByDateRange(demoCalls(), dateRange);
+    return ok(listPayload(demoAgentReportRows(rangedCalls), {}, data));
+  }
+  if (url.includes('/api/tenant/report/call-queue/list')) {
+    /* The shipped Queue report calls this with no date filter at all (see
+       queue/index.tsx, where filter_date is commented out) — always the
+       full pool, matching real backend behaviour. */
+    return ok(listPayload(demoQueueReportRows(), {}, data));
+  }
+  if (url.includes('/api/call-queue/list')) return ok(listPayload(demoQueueRows(), {}, data));
+  if (url.includes('/api/tenant/ivr/list')) return ok(listPayload(demoFlowRows(), {}, data));
+  if (url.includes('/api/tenant/xml/call-logs')) {
+    const params = asObject(data);
+    return ok(demoQueueCallLogDetail(String(params?.call_id || ''), String(params?.type || '')));
+  }
+  /* Sessions derives seven stat cards, both filter rows and the CSV export
+     from these rows, so an empty list left the whole screen at zero. */
+  if (url.includes('/api/ai/agent/session/list')) {
+    return ok(listPayload(demoAiSessionRows(), {}, data));
+  }
+  /* The lists the two AI screens read. Answered from the store so a
+     receptionist or chat agent created in the wizard is there on return. */
+  if (url.includes('/api/ai/receptionist/list')) {
+    return ok(listPayload(readStore().receptionists ?? [], {}, data));
+  }
+  if (url.includes('/api/ai/chat-agent/list')) {
+    return ok(listPayload(readStore().chatAgents ?? [], {}, data));
+  }
+  /* The AI Receptionist builder's Voice & Persona step. An empty list here
+     leaves its required voice field with nothing to select, which stops the
+     wizard at step 2 rather than just looking bare. */
+  if (url.includes('/api/ai/voice/list')) return ok(listPayload(demoAiVoiceRows()));
+  /* The website scan behind both knowledge-base builders. Deliberately a bare
+     array rather than `ok(...)`: both read `Array.isArray(response.data)` and
+     treat anything else as nothing found. */
+  if (url.includes('/api/ai/chat-agent/site-crawl')) {
+    return demoCrawledPages(String(asObject(data)?.site_url || ''));
+  }
+  /* The Review step's job. Order matters: every path below contains the
+     `review-job` prefix, so the specific ones have to be tested first or they
+     would all be answered as a fresh job. */
+  if (url.includes('/api/ai/knowledge-base/review-job/status')) {
+    return getDemoReviewJob(String(asObject(data)?.jobId || ''));
+  }
+  if (url.includes('/api/ai/knowledge-base/review-job/cleanup')) return ok({ cleaned: true });
+  if (url.includes('/api/ai/knowledge-base/review-job')) {
+    return startDemoReviewJob(asObject(data));
+  }
+  /* Creating the receptionist ingests its knowledge first, and every ingest
+     is checked for an id before the next one runs — "Generated knowledge base
+     was created without an ingestion ID." is thrown on a missing one, which
+     stopped Create Receptionist on the last step. The id is read off the body
+     directly, so it sits at the top level rather than inside `ok()`. */
+  if (
+    url.includes('/api/ai/user/add-content') ||
+    url.includes('/api/ai/user/ingest/url') ||
+    url.includes('/api/ai/user/ingest/pdf')
+  ) {
+    return { ingestionId: `demo-ingestion-${Math.random().toString(36).slice(2, 10)}` };
+  }
+  if (url.includes('/api/campaign/list')) {
+    /* The KPI strip's own aggregate query (limit=500, no filters) needs the
+       full set, so filtering has to apply only when the caller actually
+       asked for it — same shape as /api/contact/list's tag filter below. */
+    const requested = asObject(data);
+    const filters: Array<{ key?: string; value?: unknown }> = Array.isArray(requested?.filters)
+      ? requested.filters
+      : [];
+    const search = String(requested?.search || '')
+      .trim()
+      .toLowerCase();
+
+    const rows = demoCampaignRows().filter((row) => {
+      if (search && !String(row.name || '').toLowerCase().includes(search)) return false;
+      return filters.every((filter) => {
+        if (!filter?.key) return true;
+        return String((row as Record<string, unknown>)[filter.key] ?? '') === String(filter.value);
+      });
+    });
+
+    return ok(listPayload(rows, {}, data));
+  }
+  if (url.includes('/api/campaign/analytics')) {
+    const campaignId = asObject(data)?.campaignId;
+    const campaign = demoCampaignRows().find((row) => row._id === campaignId);
+    return ok(campaign?.campaignAnalytics || {});
+  }
+  /* Performance ▸ Dialer's "Running Campaign" tab — a different endpoint
+     from /api/campaign/list above (the member-based list vs. the full
+     Campaigns page), but the same rows read the same way here. */
+  if (url.includes('/api/campaign/member-based')) {
+    return ok(listPayload(demoCampaignRows(), {}, data));
+  }
+  /* Performance ▸ Dialer's "Assigned Queues" tab. The caller reads this as
+     a bare array (`result`), not `result.rows` — no listPayload wrapper. */
+  if (url.includes('/api/call-queue/queue-involvement')) {
+    const search = String(asObject(data)?.search || '')
+      .trim()
+      .toLowerCase();
+    const rows = demoCallQueueInvolvements().filter(
+      (row) => !search || String(row.name || '').toLowerCase().includes(search),
+    );
+    return ok(rows);
+  }
+  if (url.includes('/api/calendar/event-task/list')) {
+    /* The seed stays untouched (it's the always-there content this page was
+       designed to be judged against); anything scheduled or created in this
+       session — from either the Calendar page itself or the video
+       dashboard's own Schedule/Instant tiles — is appended alongside it. */
+    const storeRows = (readStore().meetings ?? []).map(toCalendarRow);
+    return ok(listPayload([...demoCalendarTaskRows(), ...storeRows], {}, data));
+  }
+  if (url.includes('/api/v1/sms/logs')) return ok(listPayload(demoSmsLogRows(), {}, data));
+  if (url.includes('/api/contact/group/list')) {
+    return ok(listPayload(demoContactGroupRows(), {}, data));
+  }
+
+  /* Directory ▸ Groups/Locations and Admin ▸ Departments — read from the
+     store (seeded from the contact-centre rows below) rather than calling
+     `demoDepartmentRows()`/`demoSiteRows()` directly, so a department or site
+     created/edited/deleted here actually sticks instead of reverting to the
+     seed on the next list request. */
+  if (url.includes('/api/tenant/department/list')) {
+    return ok(listPayload(readStore().departments ?? [], {}, data));
+  }
+  if (url.includes('/api/site/list')) return ok(listPayload(readStore().sites ?? [], {}, data));
+
+  if (url.includes('/api/contact/list')) {
+    /* Directory ▸ Blocked reads this same endpoint twice — once for the whole
+       book, once filtered to `tag: 'BLOCK'` for the table itself — so the
+       filter has to actually apply or "blocked" shows everyone. */
+    const requestBody = asObject(data);
+    const tagFilter = (requestBody?.filters || []).find((row: any) => row?.key === 'tag');
+    const contactRows = readStore().contacts ?? demoContactBookRows();
+    let rows = tagFilter
+      ? contactRows.filter((row) => row.tag === tagFilter.value)
+      : contactRows;
+
+    /* Directory ▸ External Contacts' own search box sends `search` on every
+       keystroke (debounced) — matched the same way the real endpoint's
+       `search` param would, against name/phone/email/company, so typing
+       actually narrows the list instead of the box doing nothing. */
+    const search = String(requestBody?.search || '').trim().toLowerCase();
+    if (search) {
+      rows = rows.filter((row: any) =>
+        [
+          `${row?.name?.first || ''} ${row?.name?.last || ''}`,
+          row?.contact?.phone,
+          row?.contact?.email,
+          row?.company,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(search)),
+      );
+    }
+
+    return ok(listPayload(rows, {}, data));
+  }
+  if (url.includes('/api/tenant/report/inbound-calls')) {
+    /* This page reads `result.data.data` for rows and `result.data.call_stats`
+       for the summary tiles — one extra `.data` nesting level deeper than
+       every other call-list-backed report. */
+    const dateRange = asObject(data)?.filter_date as { from?: string; to?: string } | undefined;
+    const rangedCalls = filterCallsByDateRange(demoCalls(), dateRange);
+    let rows = demoInboundCallRows(rangedCalls);
+    // This page's own search box (same shared pattern as
+    // `/api/tenant/report/call-list` above) — narrows the already-Inbound
+    // rows rather than re-deriving the direction filter.
+    const inboundSearch = String(asObject(data)?.search || '')
+      .trim()
+      .toLowerCase();
+    if (inboundSearch) {
+      rows = rows.filter((row) =>
+        [
+          row.caller_id_number,
+          row.destination_number,
+          row.display_caller_number,
+          row.via_did,
+          row.contact_name,
+          row.from_display_name,
+          row.forward_name,
+          row.status,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(inboundSearch)),
+      );
+    }
+    const totalDuration = rows.reduce((sum, row) => sum + (Number(row.billsectotal) || 0), 0);
+    return ok({
+      data: {
+        data: rows,
+        call_stats: { ...demoCallStats(rangedCalls), total_duration: totalDuration },
+      },
+    });
+  }
+  if (url.includes('/api/tenant/local-call-list')) {
+    let localCallRows = demoLocalCallRows();
+    const localCallSearch = String(asObject(data)?.search || '')
+      .trim()
+      .toLowerCase();
+    if (localCallSearch) {
+      localCallRows = localCallRows.filter((row) =>
+        [row.caller_id_number, row.destination_number, row.from_name, row.to_name, row.status]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(localCallSearch)),
+      );
+    }
+    return ok(listPayload(localCallRows, {}, data));
+  }
+  if (url.includes('/api/campaign/dnc/list')) return ok(listPayload(demoDncRows(), {}, data));
+  if (url.includes('/api/tenant/user/template/list')) {
+    return ok(listPayload(readStore().templates ?? demoTemplateRows(), {}, data));
+  }
+  if (url.includes('/api/tenant/call-handling/template/list')) {
+    return ok(
+      listPayload(readStore().callHandlingTemplates ?? demoCallHandlingTemplateRows(), {}, data),
+    );
+  }
+  if (url.includes('/api/v1/meeting/listing')) {
+    /* `listType` is how the video dashboard, the dedicated Upcoming/Invited/
+       Ongoing/Past pages and the video console all ask "which book" —
+       'upcoming_owned' (you host it), 'invited' (you don't), 'ongoing' and
+       'past'. The seed (`demoMeetingRows()`) is hosted by demo *agents*, not
+       the signed-in demo user, and always shown regardless of book — same
+       as before this endpoint told create/schedule apart from list, so nothing
+       already on screen disappears. A meeting made in this session is real
+       enough to sort properly: it lands under 'upcoming_owned' for its
+       creator (there is only ever one signed-in user in demo mode, so
+       nothing of yours will ever show as 'invited') and drops out of
+       'upcoming_owned'/'invited' once its end time has passed. */
+    const requestedListType = asObject(data)?.listType;
+    const seedRows = demoMeetingRows();
+    const createdRows = (readStore().meetings ?? [])
+      .filter((row) => Boolean(row.meetingId))
+      .map(toMeetingListRow);
+    const hasEnded = (row: any) => new Date(row.endTimeLocal).getTime() < Date.now();
+    const isYours = (row: any) => row.createdById === DEMO_USER.uuid;
+
+    let rows;
+    if (requestedListType === 'past') {
+      rows = [...seedRows.filter(hasEnded), ...createdRows.filter(hasEnded)];
+    } else if (requestedListType === 'upcoming_owned') {
+      rows = [...seedRows, ...createdRows.filter((row) => isYours(row) && !hasEnded(row))];
+    } else if (requestedListType === 'invited') {
+      rows = [...seedRows, ...createdRows.filter((row) => !isYours(row) && !hasEnded(row))];
+    } else {
+      // 'ongoing' and anything else: a broad, undated pool — real 'ongoing'
+      // behaves the same way (see the note on the dashboard's own liveness
+      // check), and callers narrow it themselves against the clock.
+      rows = [...seedRows, ...createdRows];
+    }
+    return ok(listPayload(rows, {}, data));
+  }
+  /* "Join a meeting" — always resolves rather than rejecting an unrecognised
+     code, so the flow can actually be exercised without first hunting down
+     one of the generated meeting codes. A code that matches something real
+     (the seed or a meeting made this session) resolves to its real name. */
+  if (url.endsWith('/api/v1/meeting/validate')) {
+    const typedId = String(asObject(data)?.meetingId || '').trim();
+    const match =
+      (readStore().meetings ?? []).find((row) => row.meetingId === typedId) ||
+      demoMeetingRows().find((row) => row.meetingId === typedId);
+    return ok({ meetingId: match?.meetingId || typedId, name: match?.name || '' });
+  }
+  /* Edit-prefill for the dashboard's own Schedule dialog. */
+  if (url.includes('/api/v1/meeting/detail')) {
+    const meetingId = asObject(data)?.meetingId;
+    const record = (readStore().meetings ?? []).find((row) => row.meetingId === meetingId);
+    return ok(record ? [toMeetingDetail(record)] : []);
+  }
+  if (url.includes('/api/v1/meeting/recording-list')) {
+    return ok(listPayload(demoRecordingRows(), {}, data));
+  }
+
+  /* Inbox and the admin Numbers list both read the same handful of company
+     numbers — one function, three callers. */
+  if (url.includes('/api/fax/did/number/assigned')) return ok(readStore().numbers ?? demoAssignedDidRows());
+  if (url.includes('/api/numbers/list')) {
+    return ok(listPayload(readStore().numbers ?? demoAssignedDidRows(), {}, data));
+  }
+
+  /* Inbox's conversation list, then the open thread's own messages. Neither
+     shares a URL with the SMS *log* above — that's Reports, this is Inbox. */
+  if (url.includes('/api/v1/sms/did-list')) return ok(demoSmsConversations());
+  if (url.includes('/api/v1/sms/list')) {
+    const chatId = asObject(data)?.chat_id;
+    return ok(listPayload(demoSmsThreadRows(chatId), {}, data));
+  }
+  if (url.includes('/api/fax/to-number-list')) {
+    return ok(listPayload(demoFaxConversations(), {}, data));
+  }
+  if (url.includes('/api/fax/list')) {
+    const faxMessageId = asObject(data)?.filters?.faxMessageId;
+    return ok(listPayload(demoFaxMessages(faxMessageId), {}, data));
+  }
+
+  /* Home's "today" digest re-reads the call log through a second endpoint
+     rather than the one `demoCalls()` already answers above. */
+  if (url.includes('/api/tenant/report/phone-call-list')) {
+    const params = asObject(data);
+    /* The phone console (call-list-column.tsx) is the only caller that pages
+       this endpoint 50 at a time — Home's digest above asks for 1 or 25. That
+       makes `limit` a safe way to give the console its own dedicated seed
+       (PHONE_CALL_SEED/PHONE_VOICEMAIL_SEED) without touching what Home's
+       "today" digest reads from the shared demoCalls() contact-centre log. */
+    if (Number(params?.limit) === 50) {
+      const rows =
+        params?.type === 'voicemail'
+          ? PHONE_VOICEMAIL_SEED
+          : params?.type === 'recording'
+            ? PHONE_CALL_SEED.filter((row) => Boolean(row.record_file))
+            : PHONE_CALL_SEED;
+      return ok(listPayload(rows, { totalRecords: rows.length }, data));
+    }
+    if (params?.type === 'voicemail') {
+      const rows = demoVoicemailRows();
+      return ok(listPayload(rows, { totalRecords: rows.length }, data));
+    }
+    const wantsMissed = (params?.filter || []).some(
+      (row: any) => row?.key === 'direction' && row?.value === 'Missed',
+    );
+    const rows = wantsMissed
+      ? demoCalls()
+          .filter((row) => row.direction === 'Inbound' && row.billsectotal === 0)
+          .map((row) => ({ ...row, direction: 'Missed' }))
+      : demoCalls();
+    return ok(listPayload(rows, { totalRecords: rows.length }, data));
+  }
+
+  if (url.includes('/api/user/role/list')) {
+    const store = readStore();
+    return ok(listPayload(withUserCounts(store.roles, store.users), {}, data));
+  }
+  if (url.includes('/api/user/list')) return ok(listPayload(readStore().users, {}, data));
+  if (url.includes('/api/user/detail')) return ok(readStore().users[0] ?? null);
+
+  /* Whoever can be forwarded to — the same roster new-department's "Add
+     Members" step, and anywhere else in the app that offers "who should
+     this go to", picks from. Unhandled before, so every one of those
+     pickers always came back empty ("Nobody to add") regardless of how
+     many people exist. Filtered by site *name* rather than a `site_uuid` on
+     the user record — the roster built from `DEMO_AGENTS` only ever carries
+     a site name, never a site id. */
+  if (url.includes('/api/tenant/forwarding-action/type')) {
+    const params = asObject(data);
+    let rows = readStore().users;
+    if (params.site_uuid) {
+      const site = (readStore().sites ?? []).find((row: any) => row.uuid === params.site_uuid);
+      if (site?.name) {
+        rows = rows.filter((user: any) => user?.site?.name === site.name);
+      }
+    }
+    const needle = String(params.search || '')
+      .trim()
+      .toLowerCase();
+    if (needle) {
+      rows = rows.filter((user: any) =>
+        [user?.first_name, user?.last_name, user?.email, user?.extension]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(needle)),
+      );
+    }
+    return ok(listPayload(rows, {}, data));
+  }
+
+  /* Text-to-speech has no real synthesis engine to call from a static
+     preview, so this hands back a tiny (silent) WAV instead of the actual
+     spoken text — enough for the "convert" round-trip (voice list → speak →
+     preview → attach) to work end to end rather than silently doing
+     nothing, which is what every screen using this flow did before. */
+  if (url.includes('/api/tenant/greeting/voice-list')) {
+    const params = asObject(data);
+    const locale = String(params.locale || 'en-US');
+    return ok({
+      voices: DEMO_VOICES.filter((voice) => voice.locale === locale),
+    });
+  }
+  if (url.includes('/api/tenant/greeting/upload-v2')) {
+    return ok(DEMO_SILENT_WAV_BASE64);
+  }
+  if (url.includes('/api/media/upload/url')) {
+    const params = asObject(data);
+    return ok({ url: 'demo://upload', file_name: params.file_name || 'audio.mp3' });
+  }
+  if (url.includes('/api/tenant/greeting/create') || url.includes('/api/tenant/greeting/update')) {
+    return ok({ uuid: `demo-greeting-${Date.now()}` });
+  }
+
+  /* Both of these carry their id as the last URL segment rather than in the
+     body, so they have to be matched last — after every other `/api/v1/
+     meeting/...` and `/api/calendar/event-task/...` route above has had a
+     chance to claim the more specific path it actually is. */
+  if (/\/api\/calendar\/event-task\/[^/?]+$/.test(url)) {
+    const id = url.split('/api/calendar/event-task/')[1]?.split(/[/?]/)[0];
+    const record = (readStore().meetings ?? []).find((row) => row._id === id);
+    return ok(record ? [toEventTaskDetail(record)] : []);
+  }
+  /* `/api/v1/meeting` has several single-segment sibling routes this file
+     doesn't answer specially (feature links, recording start/stop, leave) —
+     none of them carry a real meeting's id, so they have to be named here
+     rather than assumed to be one, or e.g. "leave-meeting" would be read as
+     a request to delete the meeting literally named "leave-meeting". */
+  const OTHER_MEETING_SUBROUTES = new Set([
+    'get-access-token',
+    'end',
+    'generate-private-link',
+    'permanent-link',
+    'record',
+    'leave-meeting',
+  ]);
+  if (/\/api\/v1\/meeting\/[^/?]+$/.test(url)) {
+    const id = url.split('/api/v1/meeting/')[1]?.split(/[/?]/)[0];
+    if (id && !OTHER_MEETING_SUBROUTES.has(id)) {
+      const store = readStore();
+      store.meetings = (store.meetings ?? []).filter((row) => row.meetingId !== id && row._id !== id);
+      writeStore(store);
+      return ok({ deleted: true });
+    }
+  }
+
+  return ok(listPayload());
+};
+
+export const buildDemoPayload = (url: string, data?: unknown) => matchDemoPayload(url, data);
+
+/**
+ * The Captain screens call their own service with `fetch`, so the axios
+ * adapter never sees them. Answering them means intercepting `fetch` itself.
+ *
+ * Only `/captain-api/` paths are handled; everything else — the organisation
+ * lookup, fonts, the Vite dev client — is passed through to the real `fetch`
+ * untouched, so nothing outside Captain changes behaviour.
+ */
+const CAPTAIN_PREFIX = '/captain-api/';
+
+export const installCaptainDemoFetch = () => {
+  if (!isDemoMode()) return;
+  if ((window.fetch as { __demo?: boolean }).__demo) return;
+
+  const realFetch = window.fetch.bind(window);
+
+  const demoFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+    if (!url.includes(CAPTAIN_PREFIX)) return realFetch(input as RequestInfo, init);
+
+    const method = init?.method || (input instanceof Request ? input.method : undefined) || 'GET';
+
+    return new Response(
+      JSON.stringify({ data: resolveCaptainRequest(url, { ...init, method }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  (demoFetch as { __demo?: boolean }).__demo = true;
+  window.fetch = demoFetch as typeof window.fetch;
+};
+
+/** Seeded before React mounts so the guards see a session on first render. */
+export const seedDemoSession = (sessionKey: string) => {
+  if (!isDemoMode()) return;
+  if (localStorage.getItem(sessionKey)) return;
+
+  localStorage.setItem(sessionKey, DEMO_SESSION_TOKEN);
+};
