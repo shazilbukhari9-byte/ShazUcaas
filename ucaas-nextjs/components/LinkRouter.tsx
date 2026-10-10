@@ -47,6 +47,24 @@ export default function LinkRouter() {
     return () => window.clearTimeout(t);
   }, [pathname]);
 
+  // Looping CSS animations only run for sections that are on (or next to) the screen, so the rest of the page
+  // costs nothing while scrolling.
+  useEffect(() => {
+    let io: IntersectionObserver | undefined;
+    const t = window.setTimeout(() => {
+      if (!("IntersectionObserver" in window)) return;
+      io = new IntersectionObserver(
+        (entries) => entries.forEach((e) => e.target.classList.toggle("anim-off", !e.isIntersecting)),
+        { rootMargin: "200px 0px" },
+      );
+      document.querySelectorAll("#ucaas-page section, #ucaas-page .stage").forEach((el) => io!.observe(el));
+    }, 900);
+    return () => {
+      window.clearTimeout(t);
+      io?.disconnect();
+    };
+  }, [pathname]);
+
   useEffect(() => {
     const prefetched = new Set<string>();
 

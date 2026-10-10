@@ -720,3 +720,9 @@ footer.foot .news button{width:44px;height:44px;flex:none}
 #inbox,#inbox .col,#inbox .ib-msgs{overscroll-behavior:auto}
 #inbox .ib-msgs,#inbox .col,#inbox .col.info{overflow:hidden!important;scroll-behavior:auto!important}
 #inbox{contain:layout style}
+
+/* looping animations: waveform bars move by transform (compositor) instead of height (layout every frame) */
+.wave i{height:24px!important;transform:scaleY(.25);animation-name:wv2!important}
+@keyframes wv2{50%{transform:scaleY(1)}}
+/* sections that are off screen pause their looping animations */
+.anim-off,.anim-off *,.anim-off *::before,.anim-off *::after{animation-play-state:paused!important}
