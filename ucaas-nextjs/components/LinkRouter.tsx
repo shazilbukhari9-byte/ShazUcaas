@@ -37,6 +37,16 @@ export default function LinkRouter() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
   }, [pathname]);
 
+  // Header menus are rendered once the page is idle, so the first hover on a nav item opens instantly.
+  useEffect(() => {
+    const warm = () => document.querySelectorAll(".mega.cold").forEach((m) => m.classList.remove("cold"));
+    const t = window.setTimeout(() => {
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+      if (ric) ric(warm, { timeout: 1500 }); else warm();
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [pathname]);
+
   useEffect(() => {
     const prefetched = new Set<string>();
 
