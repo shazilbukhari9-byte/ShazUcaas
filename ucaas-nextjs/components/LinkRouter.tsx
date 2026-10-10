@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 declare global {
   interface Window {
@@ -16,6 +16,26 @@ declare global {
  */
 export default function LinkRouter() {
   const router = useRouter();
+  const pathname = usePathname();
+  const first = useRef(true);
+  const fromHistory = useRef(false);
+
+  // A page opened from a link starts at its hero. Back / forward keep the position the browser restores,
+  // and links with a #section jump to that section as usual.
+  useEffect(() => {
+    const onPop = () => { fromHistory.current = true; };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useLayoutEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (fromHistory.current) { fromHistory.current = false; return; }
+    if (location.hash) {
+      const el = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+      if (el) { el.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" }); return; }
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+  }, [pathname]);
 
   useEffect(() => {
     const prefetched = new Set<string>();
