@@ -705,3 +705,18 @@
   .he-story .he-sc>.kx-p{margin:0;font-size:14.5px;line-height:1.55}
 }
 @media(min-width:1001px){.he-story>.kx-flow>.kx-step{min-height:0!important}}
+
+/* footer: wider brand column so the newsletter field is comfortable to type in */
+@media(min-width:1001px){
+  footer.foot .f-top{grid-template-columns:minmax(0,1.65fr) repeat(4,minmax(0,1fr))}
+  footer.foot .f-brand p{max-width:30em}
+}
+footer.foot .news{max-width:min(100%,460px)}
+footer.foot .news input{font-size:15px;padding:0 18px}
+footer.foot .news button{width:44px;height:44px;flex:none}
+@media(min-width:1001px){footer.foot .fcol a{white-space:nowrap}}
+
+/* homepage team inbox demo: the scripted conversation must never trap the page scroll */
+#inbox,#inbox .col,#inbox .ib-msgs{overscroll-behavior:auto}
+#inbox .ib-msgs,#inbox .col,#inbox .col.info{overflow:hidden!important;scroll-behavior:auto!important}
+#inbox{contain:layout style}
