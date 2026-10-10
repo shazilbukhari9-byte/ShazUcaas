@@ -1,0 +1,37 @@
+/* Scroll performance.
+   backdrop-filter re-blurs everything behind an element on every frame while the page scrolls or animates.
+   The glass surfaces here already sit on near-white backgrounds, so the blur is almost invisible, but it made scrolling stutter
+   (the customer-stories cards alone are 12-24 blurred layers that keep moving). Plain translucent backgrounds look the same and stay smooth. */
+*,*::before,*::after{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+/* keep the soft frosted feel by making the see-through surfaces a little more solid */
+.glass.story,.glass.float,.logos,.glass.pt-card{background-color:rgba(255,255,255,.88)}
+.nav-in{background-color:rgba(255,255,255,.96)}
+.mega-scrim{background-color:rgba(255,246,239,.55)}
+/* the three background glows were circles run through a large blur filter that was repainted while they drifted;
+   a soft radial gradient draws the same glow without a filter */
+.aurora i{filter:none!important}
+.aurora i:nth-child(1){background:radial-gradient(closest-side,var(--aurora-a) 30%,transparent 100%)}
+.aurora i:nth-child(2){background:radial-gradient(closest-side,var(--aurora-b) 30%,transparent 100%)}
+.aurora i:nth-child(3){background:radial-gradient(closest-side,var(--aurora-c) 30%,transparent 100%)}
+/* a film-grain texture drawn with an SVG turbulence filter and blended with "overlay" was the single most expensive paint on the
+   phone & texting showcase; the glow underneath reads the same without it */
+.sx-glow{background:none!important;mix-blend-mode:normal!important}
+
+/* ===== homepage product cards: smooth grow / shrink ===== */
+@media(min-width:901px){
+  .pcards .pcard{
+    transition:flex-grow .65s cubic-bezier(.22,.8,.24,1)!important;
+  }
+  /* the chips fade and slide in as their card widens, and out as it narrows */
+  .pcards .chips{
+    transition:max-height .5s cubic-bezier(.22,.8,.24,1),opacity .35s ease,margin .5s cubic-bezier(.22,.8,.24,1)!important;
+  }
+  .pcards .pcard:not(.is-wide) .chips{max-height:0!important;opacity:0!important;margin-bottom:0!important;overflow:hidden}
+  /* the mockup keeps its layout while the card changes width, so nothing re-wraps mid-animation */
+  .pcards .pc-vis,.pcards h3,.pcards p{transition:none}
+}
+@media(prefers-reduced-motion:reduce){.pcards .pcard,.pcards .chips{transition:none!important}}
+@media(min-width:901px){
+  .pcards .pc-vis{contain:layout paint style}
+  .pcards h3,.pcards p{contain:layout style}
+}
