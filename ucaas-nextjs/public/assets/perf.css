@@ -726,3 +726,20 @@ footer.foot .news button{width:44px;height:44px;flex:none}
 @keyframes wv2{50%{transform:scaleY(1)}}
 /* sections that are off screen pause their looping animations */
 .anim-off,.anim-off *,.anim-off *::before,.anim-off *::after{animation-play-state:paused!important}
+
+/* homepage trust rows: plain items with thin dividers, no capsule / pill containers */
+#platform .stats{gap:0!important;flex-wrap:nowrap}
+#platform .stats .stat,#platform .stats .glass.stat{background:none!important;border:0!important;box-shadow:none!important;border-radius:0!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;padding:6px clamp(14px,2vw,28px)!important;width:auto!important;flex:0 1 auto!important;min-width:0}
+#platform .stats .stat:first-child{padding-left:0!important}
+#platform .stats .stat+.stat{border-left:1px solid var(--line,rgba(40,30,20,.14))!important}
+#platform .stats .stat::before,#platform .stats .stat::after{display:none!important}
+
+#stories .rate{gap:0!important;flex-wrap:nowrap;align-items:center;justify-content:flex-end}
+#stories .rate .rt,#stories .rate .glass.rt{background:none!important;border:0!important;box-shadow:none!important;border-radius:0!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;padding:6px clamp(12px,1.8vw,24px)!important;flex:0 1 auto!important}
+#stories .rate .rt:first-child{padding-left:0!important}
+#stories .rate .rt+.rt{border-left:1px solid var(--line,rgba(40,30,20,.14))!important}
+@media(max-width:700px){
+  #platform .stats{flex-wrap:wrap}
+  #platform .stats .stat+.stat{border-left:0!important}
+  #stories .rate{flex-wrap:wrap;gap:8px 0!important}
+}
